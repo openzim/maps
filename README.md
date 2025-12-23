@@ -44,3 +44,6 @@ Create the ZIM
 ```bash
 python create-zim.py
 ```
+
+## Example
+An example of ZIM is available for download [here](https://tmp.kiwix.org/zims/tests_maps2zim_switzerland.zim).
