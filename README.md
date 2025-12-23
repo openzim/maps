@@ -1,5 +1,5 @@
-# maps2zim-poc
-PoC on having a ZIM with maps inside
+# maps2zim
+Create a ZIM with a map from [OpenStreetMap](https://www.openstreetmap.org/) inside.
 
 ## Prerequisites
 
