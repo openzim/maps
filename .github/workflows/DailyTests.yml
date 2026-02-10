@@ -1,0 +1,24 @@
+name: DailyTests
+
+on:
+  schedule:
+    - cron: '0 4 * * *'
+  workflow_dispatch:
+
+jobs:
+  run-daily-tests:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: checkout
+        uses: actions/checkout@v6
+
+      - name: Build the Docker image
+        run: |
+          docker build -t local-maps .
+
+      # - name: Run scraper
+      #   run: docker run -v $PWD/output:/output local-maps maps2zim --library-url https://geo.libretexts.org --name libretexts.org_en_geo --creator LibreTexts --title "LibreTexts Geosciences" --description "Geosciences courses from libretexts.org" --root-page-id 28207 --file-name "tests_en_libretexts-geo"
+
+      # - name: Run integration test suite
+      #   run: docker run -v $PWD/scraper/tests-integration:/src/scraper/tests-integration -v $PWD/output:/output -e ZIM_FILE_PATH=/output/tests_en_libretexts-geo.zim local-maps bash -c "pip install pytest; pytest -v /src/scraper/tests-integration"

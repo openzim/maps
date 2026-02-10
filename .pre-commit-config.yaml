@@ -1,0 +1,45 @@
+# See https://pre-commit.com for more information
+# See https://pre-commit.com/hooks.html for more hooks
+exclude: ^tests/files # these are raw test files, no need to mess with them
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+  - repo: https://github.com/psf/black
+    rev: '26.1.0'
+    hooks:
+      - id: black
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.0
+    hooks:
+      - id: ruff
+  - repo: https://github.com/RobertCraigie/pyright-python
+    rev: v1.1.408
+    hooks:
+      - id: pyright
+        name: pyright (system)
+        description: 'pyright static type checker'
+        entry: pyright
+        language: system
+        'types_or': [python, pyi]
+        require_serial: true
+        minimum_pre_commit_version: '2.9.2'
+  - repo: local
+    hooks:
+      - id: prettier
+        name: prettier (system)
+        entry: prettier --write --ignore-unknown
+        language: node
+        files: zimui\/.*$ # files in frontend folder
+        minimum_pre_commit_version: "2.9.2"
+  - repo: https://github.com/pre-commit/mirrors-eslint
+    rev: v9.39.1
+    hooks:
+    - id: eslint
+      types: [file]
+      files: zimui\/src\/.*(?:\.[jt]sx?|\.vue)$ # *.js, *.jsx, *.ts, *.tsx, *.vue in zimui/src folder
+      args:
+      - --config
+      - zimui/eslint.config.js

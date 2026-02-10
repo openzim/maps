@@ -1,0 +1,100 @@
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  test-scraper:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version-file: scraper/pyproject.toml
+          architecture: x64
+
+      - name: Install dependencies (and project)
+        working-directory: scraper
+        run: |
+          pip install -U pip
+          pip install -e .[test,scripts]
+
+      - name: Run the tests
+        working-directory: scraper
+        run: inv coverage --args "-vvv"
+
+      - name: Upload coverage report to codecov
+        uses: codecov/codecov-action@v5
+        with:
+          fail_ci_if_error: true
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+  build-scraper:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version-file: scraper/pyproject.toml
+          architecture: x64
+
+      - name: Ensure we can build Python targets
+        working-directory: scraper
+        run: |
+          pip install -U pip build
+          python3 -m build --sdist --wheel
+
+  build-and-test-zimui:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: zimui/package.json
+          cache: yarn
+          cache-dependency-path: zimui/yarn.lock
+
+      - name: Install dependencies
+        working-directory: zimui
+        run: |
+          yarn install
+
+      - name: Build
+        working-directory: zimui
+        run: |
+          yarn build
+
+      - name: Start web server
+        working-directory: zimui
+        run: |
+          yarn preview &
+
+      - name: Wait for web server to be ready
+        run: |
+          npx wait-on http://localhost:4173
+
+  # this job replaces the standard "build_docker" job since it builds the docker image
+  run-integration-tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Build the Docker image
+        run: |
+          docker build -t local-maps .
+
+      # - name: Run scraper
+      #   run: docker run -v $PWD/output:/output local-maps maps2zim --library-url https://geo.libretexts.org --name libretexts.org_en_geo --creator LibreTexts --title "LibreTexts Geosciences" --description "Geosciences courses from libretexts.org" --root-page-id 28207 --file-name "tests_en_libretexts-geo"
+
+      # - name: Run integration test suite
+      #   run: docker run -v $PWD/scraper/tests-integration:/src/scraper/tests-integration -v $PWD/output:/output -e ZIM_FILE_PATH=/output/tests_en_libretexts-geo.zim local-maps bash -c "pip install pytest; pytest -v /src/scraper/tests-integration"

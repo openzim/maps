@@ -1,49 +1,129 @@
 # maps2zim
-Create a ZIM with a map from [OpenStreetMap](https://www.openstreetmap.org/) inside.
 
-## Prerequisites
+This scrapers creates an offline maps, based on [OpenStreetMap](https://www.openstreetmap.org/) data, in the ZIM format.
 
-- OSM tiles generated locally (done with https://github.com/Magellium/osmtilemaker for the PoC, simply follow the README)
-- Python 3.13
+[![CodeFactor](https://www.codefactor.io/repository/github/openzim/maps/badge)](https://www.codefactor.io/repository/github/openzim/maps)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+[![codecov](https://codecov.io/gh/openzim/maps/branch/main/graph/badge.svg)](https://codecov.io/gh/openzim/maps)
+[![PyPI version shields.io](https://img.shields.io/pypi/v/maps2zim.svg)](https://pypi.org/project/maps2zim/)
+[![PyPI - Python Version](https://img.shields.io/pypi/pyversions/maps2zim.svg)](https://pypi.org/project/maps2zim)
+[![Docker](https://ghcr-badge.egpl.dev/openzim/maps/latest_tag?label=docker)](https://ghcr.io/openzim/maps)
 
-## How it was built
+## Installation
 
-Create a Node.JS Vite app with ol package:
+There are three main ways to install and use `maps2zim` from most recommended to least:
 
-```
-npm create ol-app ol-app
-```
+<details>
+<summary>Install using a pre-built container</summary>
 
-Tweak few things:
-- adjust CSS + HTML to display a title with the map
-- adjust JS to load tiles locally instead of OSM online tile server
-- adjust `vite.config.js` to specify base directory
+1. Download the image using `docker`:
 
-## Python setup
+   ```sh
+   docker pull ghcr.io/openzim/maps
+   ```
 
-Create your venv and install requirements
+</details>
+<details>
+<summary>Build your own container</summary>
 
-```bash
-python -m venv venv
-source venv/bin/activate
-pip install -r requirements
-```
+1. Clone the repository locally:
+
+   ```sh
+   git clone https://github.com/openzim/maps.git && cd maps
+   ```
+
+1. Build the image:
+
+   ```sh
+   docker build -t ghcr.io/openzim/maps .
+   ```
+
+</details>
+<details>
+<summary>Run the software locally using Hatch</summary>
+
+1. Clone the repository locally:
+
+   ```sh
+   git clone https://github.com/openzim/maps.git && cd maps
+   ```
+
+1. Install [Hatch](https://hatch.pypa.io/):
+
+   ```sh
+   pip3 install hatch
+   ```
+
+1. Start a hatch shell to install software and dependencies in an isolated virtual environment.
+
+   ```sh
+   hatch shell
+   ```
+
+1. Run the `maps2zim` command:
+
+   ```sh
+   maps2zim --help
+   ```
+
+</details>
 
 ## Usage
 
-Build Vite app:
-
-```
-cd ol-app
-npm run build
-cd ..
+```sh
+# Get help
+docker run -v output:/output ghcr.io/openzim/maps maps2zim --help
 ```
 
-Create the ZIM
+TODO: add correct sample command below
 
-```bash
-python create-zim.py
+```sh
+# Create a ZIM for ...
+docker run -v output:/output ghcr.io/openzim/maps maps2zim ???
 ```
 
-## Example
-An example of ZIM is available for download [here](https://tmp.kiwix.org/zims/tests_maps2zim_switzerland.zim).
+## Developing
+
+Use the commands below to set up the project once:
+
+```sh
+# Install hatch if it isn't installed already.
+❯ pip install hatch
+
+# Local install (in default env) / re-sync packages
+❯ hatch run pip list
+
+# Set-up pre-commit
+❯ pre-commit install
+```
+
+The following commands can be used to build and test the scraper:
+
+```sh
+# Show scripts
+❯ hatch env show
+
+# linting, testing, coverage, checking
+❯ hatch run lint:all
+❯ hatch run lint:fixall
+
+# run tests on all matrixed' envs
+❯ hatch run test:run
+
+# run tests in a single matrixed' env
+❯ hatch env run -e test -i py=3.12 coverage
+
+# run static type checks
+❯ hatch env run check:all
+
+# building packages
+❯ hatch build
+```
+
+### Contributing
+
+This project adheres to openZIM's [Contribution Guidelines](https://github.com/openzim/overview/wiki/Contributing).
+
+This project has implemented openZIM's [Python bootstrap, conventions and policies](https://github.com/openzim/_python-bootstrap/blob/main/docs/Policy.md) **v1.0.3**.
+
+See details for contributions in [CONTRIBUTING.md](CONTRIBUTING.md).
