@@ -1,0 +1,65 @@
+name: QA
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  check-scraper-qa:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version-file: scraper/pyproject.toml
+          architecture: x64
+
+      - name: Install dependencies
+        working-directory: scraper
+        run: |
+          pip install -U pip
+          pip install -e .[lint,check,scripts,test]
+
+      - name: Check black formatting
+        working-directory: scraper
+        run: inv lint-black
+
+      - name: Check ruff
+        working-directory: scraper
+        run: inv lint-ruff
+
+      - name: Check pyright
+        working-directory: scraper
+        run: inv check-pyright
+
+  check-zimui-qa:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: zimui/package.json
+          cache: yarn
+          cache-dependency-path: zimui/yarn.lock
+
+      - name: Install JS dependencies
+        working-directory: zimui
+        run: yarn install --frozen-lockfile
+
+      - name: Check prettier
+        working-directory: zimui
+        run: |
+          yarn format
+          
+      - name: Check eslint
+        working-directory: zimui
+        run: |
+          yarn lint

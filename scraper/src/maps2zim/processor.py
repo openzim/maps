@@ -1,0 +1,310 @@
+import datetime
+import json
+import logging
+from io import BytesIO
+from pathlib import Path
+
+from schedule import every, run_pending
+from zimscraperlib.image import convert_image, resize_image
+from zimscraperlib.image.conversion import convert_svg2png
+from zimscraperlib.image.probing import format_for
+from zimscraperlib.zim import Creator, metadata
+from zimscraperlib.zim.filesystem import (
+    validate_file_creatable,
+    validate_folder_writable,
+)
+from zimscraperlib.zim.indexing import IndexData
+
+from maps2zim.constants import (
+    NAME,
+    VERSION,
+)
+from maps2zim.context import Context
+from maps2zim.download import stream_file
+from maps2zim.errors import NoIllustrationFoundError
+from maps2zim.ui import ConfigModel
+from maps2zim.zimconfig import ZimConfig
+
+context = Context.get()
+logger = context.logger
+
+
+class Processor:
+    """Generates ZIMs based on the user's configuration."""
+
+    def __init__(self) -> None:
+        """Initializes Processor."""
+
+        self.stats_items_done = 0
+        # we add 1 more items to process so that progress is not 100% at the beginning
+        # when we do not yet know how many items we have to process and so that we can
+        # increase counter at the beginning of every for loop, not minding about what
+        # could happen in the loop in terms of exit conditions
+        self.stats_items_total = 1
+
+    def run(self) -> Path:
+        """Generates a zim for a single document.
+
+        Returns the path to the generated ZIM.
+        """
+        try:
+            return self._run_internal()
+        except Exception:
+            logger.error(
+                f"Problem encountered while processing "
+                f"{context.current_thread_workitem}"
+            )
+            raise
+
+    def _run_internal(self) -> Path:
+        logger.setLevel(level=logging.DEBUG if context.debug else logging.INFO)
+
+        self.zim_config = ZimConfig(
+            file_name=context.file_name,
+            name=context.name,
+            title=context.title,
+            publisher=context.publisher,
+            creator=context.creator,
+            description=context.description,
+            long_description=context.long_description,
+            tags=context.tags,
+            secondary_color=context.secondary_color,
+        )
+
+        # initialize all paths, ensuring they are ok for operation
+        context.output_folder.mkdir(exist_ok=True)
+        validate_folder_writable(context.output_folder)
+
+        context.tmp_folder.mkdir(exist_ok=True)
+        validate_folder_writable(context.tmp_folder)
+
+        logger.info("Generating ZIM")
+
+        # create first progress report and and a timer to update every 10 seconds
+        self._report_progress()
+        every(10).seconds.do(  # pyright: ignore[reportUnknownMemberType]
+            self._report_progress
+        )
+
+        self.formatted_config = self.zim_config.format(
+            {
+                "name": self.zim_config.name,
+                "period": datetime.date.today().strftime("%Y-%m"),
+            }
+        )
+        zim_file_name = f"{self.formatted_config.file_name}.zim"
+        zim_path = context.output_folder / zim_file_name
+
+        if zim_path.exists():
+            if context.overwrite_existing_zim:
+                zim_path.unlink()
+            else:
+                logger.error(f"  {zim_path} already exists, aborting.")
+                raise SystemExit(2)
+
+        validate_file_creatable(context.output_folder, zim_file_name)
+
+        logger.info(f"  Writing to: {zim_path}")
+
+        logger.debug(f"User-Agent: {context.wm_user_agent}")
+
+        creator = Creator(zim_path, "index.html")
+
+        logger.info("  Fetching ZIM illustration...")
+        zim_illustration = self._fetch_zim_illustration()
+
+        logger.debug("Configuring metadata")
+        creator.config_metadata(
+            metadata.StandardMetadataList(
+                Name=metadata.NameMetadata(self.formatted_config.name),
+                Title=metadata.TitleMetadata(self.formatted_config.title),
+                Publisher=metadata.PublisherMetadata(self.formatted_config.publisher),
+                Date=metadata.DateMetadata(
+                    datetime.datetime.now(tz=datetime.UTC).date()
+                ),
+                Creator=metadata.CreatorMetadata(self.formatted_config.creator),
+                Description=metadata.DescriptionMetadata(
+                    self.formatted_config.description
+                ),
+                LongDescription=(
+                    metadata.LongDescriptionMetadata(
+                        self.formatted_config.long_description
+                    )
+                    if self.formatted_config.long_description
+                    else None
+                ),
+                # As of 2024-09-4 all documentation is in English.
+                Language=metadata.LanguageMetadata(context.language_iso_639_3),
+                Tags=(
+                    metadata.TagsMetadata(self.formatted_config.tags)
+                    if self.formatted_config.tags
+                    else None
+                ),
+                Scraper=metadata.ScraperMetadata(f"{NAME} v{VERSION}"),
+                Illustration_48x48_at_1=metadata.DefaultIllustrationMetadata(
+                    zim_illustration.getvalue()
+                ),
+            ),
+        )
+
+        # Start creator early to detect problems early.
+        with creator as creator:
+            try:
+                creator.add_item_for(
+                    "favicon.ico",
+                    content=self._fetch_favicon_from_illustration(
+                        zim_illustration
+                    ).getvalue(),
+                )
+                del zim_illustration
+
+                self.run_with_creator(creator)
+            except Exception:
+                creator.can_finish = False
+                raise
+
+        if creator.can_finish:
+            logger.info(f"ZIM creation completed, ZIM is at {zim_path}")
+        else:
+            logger.error("ZIM creation failed")
+
+        # same reason than self.stats_items_done = 1 at the beginning, we need to add
+        # a final item to complete the progress
+        self.stats_items_done += 1
+        self._report_progress()
+
+        return zim_path
+
+    def run_with_creator(self, creator: Creator):
+
+        context.current_thread_workitem = "standard files"
+
+        logger.info("  Storing configuration...")
+        creator.add_item_for(
+            "content/config.json",
+            content=ConfigModel(
+                secondary_color=self.zim_config.secondary_color
+            ).model_dump_json(by_alias=True),
+        )
+
+        count_zimui_files = len(list(context.zimui_dist.rglob("*")))
+        if count_zimui_files == 0:
+            raise OSError(f"No Vue.JS UI files found in {context.zimui_dist}")
+        logger.info(
+            f"Adding {count_zimui_files} Vue.JS UI files in {context.zimui_dist}"
+        )
+        self.stats_items_total += count_zimui_files
+        for file in context.zimui_dist.rglob("*"):
+            self.stats_items_done += 1
+            run_pending()
+            if file.is_dir():
+                continue
+            path = str(Path(file).relative_to(context.zimui_dist))
+            logger.debug(f"Adding {path} to ZIM")
+            if path == "index.html":  # Change index.html title and add to ZIM
+                index_html_path = context.zimui_dist / path
+                creator.add_item_for(
+                    path=path,
+                    content=index_html_path.read_text(encoding="utf-8").replace(
+                        "<title>Vite App</title>",
+                        f"<title>{self.formatted_config.title}</title>",
+                    ),
+                    mimetype="text/html",
+                    is_front=True,
+                )
+            else:
+                creator.add_item_for(
+                    path=path,
+                    fpath=file,
+                    is_front=False,
+                )
+
+    def _report_progress(self):
+        """report progress to stats file"""
+
+        logger.info(f"  Progress {self.stats_items_done} / {self.stats_items_total}")
+        if not context.stats_filename:
+            return
+        progress = {
+            "done": self.stats_items_done,
+            "total": self.stats_items_total,
+        }
+        context.stats_filename.write_text(json.dumps(progress, indent=2))
+
+    def _fetch_zim_illustration(self) -> BytesIO:
+        """Fetch ZIM illustration, convert/resize and return it"""
+        icon_url = context.illustration_url
+        try:
+            logger.debug(f"Downloading {icon_url} illustration")
+            illustration_content = BytesIO()
+            stream_file(
+                icon_url,
+                byte_stream=illustration_content,
+            )
+            illustration_format = format_for(illustration_content, from_suffix=False)
+            png_illustration = BytesIO()
+            if illustration_format == "SVG":
+                logger.debug("Converting SVG illustration to PNG")
+                convert_svg2png(illustration_content, png_illustration, 48, 48)
+            elif illustration_format == "PNG":
+                png_illustration = illustration_content
+            else:
+                logger.debug(f"Converting {illustration_format} illustration to PNG")
+                convert_image(illustration_content, png_illustration, fmt="PNG")
+            logger.debug("Resizing ZIM illustration")
+            resize_image(
+                src=png_illustration,
+                width=48,
+                height=48,
+                method="cover",
+            )
+            return png_illustration
+        except Exception as exc:
+            raise NoIllustrationFoundError(
+                f"Failed to retrieve illustration at {icon_url}"
+            ) from exc
+
+    def _fetch_favicon_from_illustration(self, illustration: BytesIO) -> BytesIO:
+        """Return a converted version of the illustration into favicon"""
+        favicon = BytesIO()
+        convert_image(illustration, favicon, fmt="ICO")
+        logger.debug("Resizing ZIM favicon")
+        resize_image(
+            src=favicon,
+            width=32,
+            height=32,
+            method="cover",
+        )
+        return favicon
+
+    def _add_indexing_item_to_zim(
+        self,
+        creator: Creator,
+        title: str,
+        content: str,
+        fname: str,
+        zimui_redirect: str,
+    ):
+        """Add a 'fake' item to the ZIM, with proper indexing data
+
+        This is mandatory for suggestions and fulltext search to work properly, since
+        we do not really have pages to search for.
+
+        This item is a very basic HTML which automatically redirect to proper Vue.JS URL
+        """
+
+        redirect_url = f"../index.html#/{zimui_redirect}"
+        html_content = (
+            f"<html><head><title>{title}</title>"
+            f'<meta http-equiv="refresh" content="0;URL=\'{redirect_url}\'" />'
+            f"</head><body></body></html>"
+        )
+
+        logger.debug(f"Adding {fname} to ZIM index")
+        creator.add_item_for(
+            title=title,
+            path="index/" + fname,
+            content=html_content.encode("utf-8"),
+            mimetype="text/html",
+            index_data=IndexData(title=title, content=content),
+        )
