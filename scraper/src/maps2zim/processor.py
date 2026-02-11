@@ -240,14 +240,14 @@ class Processor:
         context.current_thread_workitem = "write sprites"
         self._write_sprites(creator)
 
+        context.current_thread_workitem = "download mbtiles"
+        self._fetch_mbtiles()
+
         context.current_thread_workitem = "download styles"
         self._fetch_styles_tar_gz()
 
         context.current_thread_workitem = "write styles"
         self._write_styles(creator)
-
-        context.current_thread_workitem = "download mbtiles"
-        self._fetch_mbtiles()
 
         context.current_thread_workitem = "tilejson"
         self._write_tilejson(creator)
@@ -533,10 +533,11 @@ class Processor:
         """Extract styles from tar.gz and add to ZIM under 'styles' folder.
 
         Extracts the cached styles tar.gz file, modifies JSON files to use relative
-        paths by replacing the domain with '.', and adds all contents to the ZIM
-        without the .json extension.
+        paths by replacing the domain with '.', filters layers based on available
+        mbtiles layers, and adds all contents to the ZIM without the .json extension.
         """
         styles_tar_gz_path = context.assets_folder / "styles.tar.gz"
+        available_layers = self._get_available_layers_from_mbtiles()
 
         logger.info("  Extracting styles and adding to ZIM")
 
@@ -549,8 +550,16 @@ class Processor:
                     if f is not None:
                         content = f.read()
 
-                        # If it's a JSON file, replace domain with relative path
+                        # If it's a JSON file, process it
                         if member.name.endswith(".json"):
+                            # Parse JSON
+                            style_obj = json.loads(content.decode("utf-8"))
+
+                            # Filter layers based on available mbtiles layers
+                            style_obj = self._filter_style_layers(style_obj, available_layers)
+
+                            # Replace domain with relative path
+                            content = json.dumps(style_obj, ensure_ascii=False, indent=2).encode("utf-8")
                             content = content.replace(
                                 b"https://__TILEJSON_DOMAIN__",
                                 b"."
@@ -568,6 +577,60 @@ class Processor:
                         )
 
         logger.info("  Styles added to ZIM")
+
+    def _get_available_layers_from_mbtiles(self) -> set[str]:
+        """Get set of available source-layer names from mbtiles metadata.
+
+        Reads the mbtiles database and extracts the list of available layers
+        from the vector_layers metadata.
+        """
+        mbtiles_path = context.assets_folder / f"{context.area}.mbtiles"
+
+        # If mbtiles doesn't exist yet, return empty set
+        if not mbtiles_path.exists():
+            return set()
+
+        conn = sqlite3.connect(mbtiles_path)
+        c = conn.cursor()
+
+        try:
+            metadata = dict(c.execute("select name, value from metadata").fetchall())
+            if "json" in metadata:
+                metadata_json = json.loads(metadata["json"])
+                if "vector_layers" in metadata_json:
+                    # Extract all layer IDs from vector_layers
+                    return {layer["id"] for layer in metadata_json["vector_layers"]}
+        finally:
+            conn.close()
+
+        return set()
+
+    @staticmethod
+    def _filter_style_layers(style_obj: dict, available_layers: set[str]) -> dict:
+        """Remove layers from style that reference non-existent source-layers.
+
+        Filters the style's layer array to only include layers that reference
+        existing source-layers in the mbtiles database.
+        """
+        if "layers" not in style_obj or not available_layers:
+            return style_obj
+
+        filtered_layers = []
+        for layer in style_obj["layers"]:
+            # If layer has no source-layer, keep it (e.g., background layers)
+            if "source-layer" not in layer:
+                filtered_layers.append(layer)
+            # If source-layer exists in mbtiles, keep it
+            elif layer.get("source-layer") in available_layers:
+                filtered_layers.append(layer)
+            else:
+                logger.debug(
+                    f"Removing layer '{layer.get('id')}' - "
+                    f"source-layer '{layer.get('source-layer')}' not found in mbtiles"
+                )
+
+        style_obj["layers"] = filtered_layers
+        return style_obj
 
     def _count_mbtiles_items(self) -> tuple[int, int]:
         """Count total dedupl and tile items in mbtiles database.
@@ -724,7 +787,7 @@ class Processor:
                 dedupl_id = row[3]
 
                 # Calculate paths
-                tile_path = f"./tiles/{z}/{x}/{y}.pbf"
+                tile_path = f"tiles/{z}/{x}/{y}.pbf"
                 dedupl_path = f"dedupl/{self._dedupl_helper_path(dedupl_id)}"
 
                 # Create redirect from tile to dedupl
@@ -791,7 +854,7 @@ class Processor:
 
             # Set tiles path - use relative path for ZIM
             # The tiles are located at tiles/{z}/{x}/{y}.pbf relative to ZIM root
-            tilejson["tiles"] = ["tiles/{z}/{x}/{y}.pbf"]
+            tilejson["tiles"] = ["./tiles/{z}/{x}/{y}.pbf"]
 
             # Set attribution
             tilejson["attribution"] = (
