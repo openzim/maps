@@ -2,6 +2,7 @@ import datetime
 import json
 import logging
 import sqlite3
+import tarfile
 import time
 from io import BytesIO
 from pathlib import Path
@@ -221,6 +222,12 @@ class Processor:
                     is_front=False,
                 )
 
+        context.current_thread_workitem = "download fonts"
+        self._fetch_fonts_tar_gz()
+
+        context.current_thread_workitem = "write fonts"
+        self._write_fonts(creator)
+
         context.current_thread_workitem = "download mbtiles"
         self._fetch_mbtiles()
 
@@ -328,6 +335,57 @@ class Processor:
             mimetype="text/html",
             index_data=IndexData(title=title, content=content),
         )
+
+    def _fetch_fonts_tar_gz(self):
+        """Download fonts tar.gz from OpenFreeMap if not already cached.
+
+        If file already exists in assets folder, do nothing.
+        Otherwise, download from https://assets.openfreemap.com/fonts/ofm.tar.gz
+        """
+        fonts_tar_gz_path = context.assets_folder / "ofm.tar.gz"
+
+        # If file already exists, we're done
+        if fonts_tar_gz_path.exists():
+            logger.info(f"  using fonts tar.gz already available at {fonts_tar_gz_path}")
+            return
+
+        # Create assets folder if it doesn't exist
+        context.assets_folder.mkdir(parents=True, exist_ok=True)
+
+        logger.info("  Downloading fonts from OpenFreeMap")
+        stream_file(
+            "https://assets.openfreemap.com/fonts/ofm.tar.gz",
+            fpath=fonts_tar_gz_path,
+        )
+        logger.info(f"  fonts tar.gz saved to {fonts_tar_gz_path}")
+
+    def _write_fonts(self, creator: Creator):
+        """Extract fonts from tar.gz and add to ZIM under 'fonts' folder.
+
+        Extracts the cached fonts tar.gz file and adds all contents to the ZIM
+        with paths under the 'fonts/' subfolder.
+        """
+        fonts_tar_gz_path = context.assets_folder / "ofm.tar.gz"
+
+        logger.info("  Extracting fonts and adding to ZIM")
+
+        # Extract and add fonts to ZIM
+        with tarfile.open(fonts_tar_gz_path, "r:gz") as tar:
+            for member in tar.getmembers():
+                if member.isfile():
+                    # Extract file content
+                    f = tar.extractfile(member)
+                    if f is not None:
+                        content = f.read()
+                        # Transform path from ofm/... to fonts/...
+                        relative_path = member.name.replace("ofm/", "", 1)
+                        zim_path = f"fonts/{relative_path}"
+                        creator.add_item_for(
+                            path=zim_path,
+                            content=content,
+                        )
+
+        logger.info("  Fonts added to ZIM")
 
     def _count_mbtiles_items(self) -> tuple[int, int]:
         """Count total dedupl and tile items in mbtiles database.
