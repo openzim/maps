@@ -1,6 +1,8 @@
 import datetime
 import json
 import logging
+import sqlite3
+import time
 from io import BytesIO
 from pathlib import Path
 
@@ -177,9 +179,6 @@ class Processor:
 
     def run_with_creator(self, creator: Creator):
 
-        context.current_thread_workitem = "download mbtiles"
-        self._fetch_mbtiles()
-        
         context.current_thread_workitem = "standard files"
 
         logger.info("  Storing configuration...")
@@ -221,6 +220,20 @@ class Processor:
                     fpath=file,
                     is_front=False,
                 )
+
+        context.current_thread_workitem = "download mbtiles"
+        self._fetch_mbtiles()
+
+        # Count items for progress reporting
+        dedupl_count, tile_count = self._count_mbtiles_items()
+        self.stats_items_total += dedupl_count + tile_count
+
+        context.current_thread_workitem = "dedupl files"
+        self._write_dedupl_files(creator)
+
+        context.current_thread_workitem = "tile files"
+        self._write_title_files(creator)
+        
 
     def _report_progress(self):
         """report progress to stats file"""
@@ -312,6 +325,23 @@ class Processor:
             index_data=IndexData(title=title, content=content),
         )
 
+    def _count_mbtiles_items(self) -> tuple[int, int]:
+        """Count total dedupl and tile items in mbtiles database.
+
+        Returns:
+            Tuple of (dedupl_count, tile_count)
+        """
+        mbtiles_path = context.assets_folder / f"{context.area}.mbtiles"
+        conn = sqlite3.connect(mbtiles_path)
+        c = conn.cursor()
+
+        try:
+            dedupl_count = c.execute("select count(*) from tiles_data").fetchone()[0]
+            tile_count = c.execute("select count(*) from tiles_shallow").fetchone()[0]
+            return dedupl_count, tile_count
+        finally:
+            conn.close()
+
     def _fetch_mbtiles(self):
         """Ensure mbtiles file is available in assets folder
 
@@ -379,3 +409,115 @@ class Processor:
             fpath=mbtiles_path,
         )
         logger.info(f"  mbtiles file saved to {mbtiles_path}")
+
+    def _write_dedupl_files(self, creator: Creator):
+        """Extract unique tile data from mbtiles and add to ZIM.
+
+        Each unique tile is stored once in the dedupl folder structure.
+        The path structure organizes IDs to keep max 1000 items per directory.
+        """
+        mbtiles_path = context.assets_folder / f"{context.area}.mbtiles"
+        conn = sqlite3.connect(mbtiles_path)
+        c = conn.cursor()
+
+        try:
+            total = c.execute("select count(*) from tiles_data").fetchone()[0]
+            logger.info(f"  Adding {total} unique tile data entries to ZIM")
+
+            last_log_time = time.time()
+            c.execute("select tile_data_id, tile_data from tiles_data")
+            for i, row in enumerate(c, start=1):
+                dedupl_id = row[0]
+                tile_data = row[1]
+
+                # Calculate dedupl path using the same logic as openfreemap
+                dedupl_path = self._dedupl_helper_path(dedupl_id)
+
+                # Add to ZIM
+                creator.add_item_for(
+                    path=f"dedupl/{dedupl_path}",
+                    content=tile_data,
+                    mimetype="application/x-protobuf",
+                )
+
+                # Update progress
+                self.stats_items_done += 1
+                run_pending()
+
+                # Log progress if more than 1 minute since last log
+                current_time = time.time()
+                if current_time - last_log_time > 60:
+                    logger.info(
+                        f"  Added {i}/{total} dedupl files "
+                        f"({i / total * 100:.1f}%)"
+                    )
+                    last_log_time = current_time
+        finally:
+            conn.close()
+
+    def _write_title_files(self, creator: Creator):
+        """Create redirects from tile paths to dedupl files.
+
+        Uses redirects instead of hardlinks to avoid duplication in ZIM.
+        Each tile path points to the corresponding deduplicated tile data.
+        """
+        mbtiles_path = context.assets_folder / f"{context.area}.mbtiles"
+        conn = sqlite3.connect(mbtiles_path)
+        c = conn.cursor()
+
+        try:
+            total = c.execute("select count(*) from tiles_shallow").fetchone()[0]
+            logger.info(f"  Creating {total} tile redirects in ZIM")
+
+            last_log_time = time.time()
+            c.execute(
+                "select zoom_level, tile_column, tile_row, tile_data_id from tiles_shallow"
+            )
+            for i, row in enumerate(c, start=1):
+                z = row[0]
+                x = row[1]
+                y = self._flip_y(z, row[2])
+                dedupl_id = row[3]
+
+                # Calculate paths
+                tile_path = f"tiles/{z}/{x}/{y}.pbf"
+                dedupl_path = f"dedupl/{self._dedupl_helper_path(dedupl_id)}"
+
+                # Create redirect from tile to dedupl
+                creator.add_redirect(tile_path, dedupl_path)
+
+                # Update progress
+                self.stats_items_done += 1
+                run_pending()
+
+                # Log progress if more than 1 minute since last log
+                current_time = time.time()
+                if current_time - last_log_time > 60:
+                    logger.info(
+                        f"  Created {i}/{total} tile redirects "
+                        f"({i / total * 100:.1f}%)"
+                    )
+                    last_log_time = current_time
+        finally:
+            conn.close()
+
+    @staticmethod
+    def _dedupl_helper_path(dedupl_id: int) -> str:
+        """Calculate dedupl path for a given ID.
+
+        Organizes IDs into a 3-level directory structure to keep max
+        1000 items per directory, allowing for 1 billion files.
+        """
+        str_num = f"{dedupl_id:09d}"
+        l1 = str_num[:3]
+        l2 = str_num[3:6]
+        l3 = str_num[6:]
+        return f"{l1}/{l2}/{l3}.pbf"
+
+    @staticmethod
+    def _flip_y(zoom: int, y: int) -> int:
+        """Flip Y coordinate for tile indexing.
+
+        Converts from TMS (Tile Map Service) convention to Web Mercator.
+        """
+        return (2**zoom - 1) - y
