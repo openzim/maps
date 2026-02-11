@@ -177,6 +177,9 @@ class Processor:
 
     def run_with_creator(self, creator: Creator):
 
+        context.current_thread_workitem = "download mbtiles"
+        self._fetch_mbtiles()
+        
         context.current_thread_workitem = "standard files"
 
         logger.info("  Storing configuration...")
@@ -308,3 +311,71 @@ class Processor:
             mimetype="text/html",
             index_data=IndexData(title=title, content=content),
         )
+
+    def _fetch_mbtiles(self):
+        """Ensure mbtiles file is available in assets folder
+
+        If file is already there, do nothing.
+
+        Otherwise, download https://btrfs.openfreemap.com/files.txt file to check
+        latest version published and then download mbtiles file
+        """
+        context.current_thread_workitem = "mbtiles"
+
+        # Determine the mbtiles filename based on area
+        mbtiles_filename = f"{context.area}.mbtiles"
+        mbtiles_path = context.assets_folder / mbtiles_filename
+
+        # If file already exists, we're done
+        if mbtiles_path.exists():
+            logger.info(f"  using mbtiles file already available at {mbtiles_path}")
+            return
+
+        # Create assets folder if it doesn't exist
+        context.assets_folder.mkdir(parents=True, exist_ok=True)
+
+        logger.info(f"  Fetching mbtiles file for area: {context.area}")
+
+        # Download files.txt to check available versions
+        logger.debug("  Downloading file list from openfreemap")
+        files_list_stream = BytesIO()
+        stream_file(
+            "https://btrfs.openfreemap.com/files.txt",
+            byte_stream=files_list_stream,
+        )
+        files_list_stream.seek(0)
+        files_list_content = files_list_stream.read().decode("utf-8")
+
+        # Parse files list to find the latest mbtiles file for the area
+        mbtiles_path_in_list = None
+        latest_timestamp = None
+
+        for line in files_list_content.strip().split("\n"):
+            # Look for pattern: areas/{area}/{timestamp}_{suffix}/tiles.mbtiles
+            if f"areas/{context.area}/" in line and "tiles.mbtiles" in line:
+                # Extract timestamp from path: areas/{area}/{YYYYMMDD_HHMMSS_XX}/tiles.mbtiles
+                parts = line.split("/")
+                if len(parts) >= 4:
+                    timestamp_part = parts[2]  # e.g., "20250907_231001_pt"
+                    timestamp = timestamp_part.split("_")[0]  # e.g., "20250907"
+
+                    # Keep the latest version (highest timestamp)
+                    if latest_timestamp is None or timestamp > latest_timestamp:
+                        latest_timestamp = timestamp
+                        mbtiles_path_in_list = line
+
+        if not mbtiles_path_in_list:
+            raise OSError(
+                f"Could not find tiles.mbtiles for area '{context.area}' "
+                f"in files list from openfreemap"
+            )
+
+        # Construct the full URL
+        mbtiles_url = f"https://btrfs.openfreemap.com/{mbtiles_path_in_list}"
+
+        logger.info(f"  Downloading mbtiles from {mbtiles_url}")
+        stream_file(
+            mbtiles_url,
+            fpath=mbtiles_path,
+        )
+        logger.info(f"  mbtiles file saved to {mbtiles_path}")
