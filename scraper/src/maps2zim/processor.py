@@ -228,6 +228,12 @@ class Processor:
         context.current_thread_workitem = "write fonts"
         self._write_fonts(creator)
 
+        context.current_thread_workitem = "download natural_earth"
+        self._fetch_natural_earth_tar_gz()
+
+        context.current_thread_workitem = "write natural_earth"
+        self._write_natural_earth(creator)
+
         context.current_thread_workitem = "download mbtiles"
         self._fetch_mbtiles()
 
@@ -386,6 +392,57 @@ class Processor:
                         )
 
         logger.info("  Fonts added to ZIM")
+
+    def _fetch_natural_earth_tar_gz(self):
+        """Download natural_earth tar.gz from OpenFreeMap if not already cached.
+
+        If file already exists in assets folder, do nothing.
+        Otherwise, download from http://assets.openfreemap.com/natural_earth/ofm.tar.gz
+        """
+        natural_earth_tar_gz_path = context.assets_folder / "natural_earth.tar.gz"
+
+        # If file already exists, we're done
+        if natural_earth_tar_gz_path.exists():
+            logger.info(f"  using natural_earth tar.gz already available at {natural_earth_tar_gz_path}")
+            return
+
+        # Create assets folder if it doesn't exist
+        context.assets_folder.mkdir(parents=True, exist_ok=True)
+
+        logger.info("  Downloading natural_earth from OpenFreeMap")
+        stream_file(
+            "http://assets.openfreemap.com/natural_earth/ofm.tar.gz",
+            fpath=natural_earth_tar_gz_path,
+        )
+        logger.info(f"  natural_earth tar.gz saved to {natural_earth_tar_gz_path}")
+
+    def _write_natural_earth(self, creator: Creator):
+        """Extract natural_earth from tar.gz and add to ZIM under 'natural_earth/n2sr' folder.
+
+        Extracts the cached natural_earth tar.gz file and adds all contents to the ZIM,
+        transforming paths from ofm/ne2sr/ to natural_earth/n2sr/.
+        """
+        natural_earth_tar_gz_path = context.assets_folder / "natural_earth.tar.gz"
+
+        logger.info("  Extracting natural_earth and adding to ZIM")
+
+        # Extract and add natural_earth to ZIM
+        with tarfile.open(natural_earth_tar_gz_path, "r:gz") as tar:
+            for member in tar.getmembers():
+                if member.isfile():
+                    # Extract file content
+                    f = tar.extractfile(member)
+                    if f is not None:
+                        content = f.read()
+                        # Transform path from ofm/ne2sr/... to natural_earth/n2sr/...
+                        relative_path = member.name.replace("ofm/ne2sr/", "", 1)
+                        zim_path = f"natural_earth/n2sr/{relative_path}"
+                        creator.add_item_for(
+                            path=zim_path,
+                            content=content,
+                        )
+
+        logger.info("  Natural_earth added to ZIM")
 
     def _count_mbtiles_items(self) -> tuple[int, int]:
         """Count total dedupl and tile items in mbtiles database.
