@@ -93,8 +93,9 @@ class Context:
     # ------------------------------
     # Maps specific arguments
     # ------------------------------
-    
-    # By default, download only monaco area ; specify planet to download the whole planet
+
+    # By default, download only monaco area ; specify planet to download the whole
+    # planet
     area: str = "monaco"
 
     @classmethod

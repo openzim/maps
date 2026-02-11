@@ -109,7 +109,8 @@ def prepare_context(raw_args: list[str], tmpdir: str) -> None:
 
     parser.add_argument(
         "--assets",
-        help="Folder folder to fetch / store downloaded assets (can be reused across runs)",
+        help="Folder folder to fetch / store downloaded assets (can be reused across "
+        "runs)",
         type=Path,
         dest="assets_folder",
     )

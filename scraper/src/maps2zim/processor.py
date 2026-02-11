@@ -7,6 +7,7 @@ import tarfile
 import time
 from io import BytesIO
 from pathlib import Path
+from typing import Any
 
 from schedule import every, run_pending
 from zimscraperlib.image import convert_image, resize_image
@@ -31,6 +32,8 @@ from maps2zim.zimconfig import ZimConfig
 
 context = Context.get()
 logger = context.logger
+
+LOG_EVERY_SECONDS = 60
 
 
 class Processor:
@@ -263,8 +266,6 @@ class Processor:
         context.current_thread_workitem = "tile files"
         self._write_title_files(creator)
 
-
-
     def _report_progress(self):
         """report progress to stats file"""
 
@@ -365,7 +366,9 @@ class Processor:
 
         # If file already exists, we're done
         if fonts_tar_gz_path.exists():
-            logger.info(f"  using fonts tar.gz already available at {fonts_tar_gz_path}")
+            logger.info(
+                f"  using fonts tar.gz already available at {fonts_tar_gz_path}"
+            )
             return
 
         # Create assets folder if it doesn't exist
@@ -396,7 +399,8 @@ class Processor:
                     f = tar.extractfile(member)
                     if f is not None:
                         content = f.read()
-                        # Transform path from ofm/{fontstack}/{range}.pbf to fonts/{fontstack}/{range}.pbf
+                        # Transform path from ofm/{fontstack}/{range}.pbf to
+                        # fonts/{fontstack}/{range}.pbf
                         relative_path = member.name.replace("ofm/", "", 1)
                         zim_path = f"fonts/{relative_path}"
                         creator.add_item_for(
@@ -416,7 +420,10 @@ class Processor:
 
         # If file already exists, we're done
         if natural_earth_tar_gz_path.exists():
-            logger.info(f"  using natural_earth tar.gz already available at {natural_earth_tar_gz_path}")
+            logger.info(
+                "  using natural_earth tar.gz already available at "
+                f"{natural_earth_tar_gz_path}"
+            )
             return
 
         # Create assets folder if it doesn't exist
@@ -430,7 +437,7 @@ class Processor:
         logger.info(f"  natural_earth tar.gz saved to {natural_earth_tar_gz_path}")
 
     def _write_natural_earth(self, creator: Creator):
-        """Extract natural_earth from tar.gz and add to ZIM under 'natural_earth/ne2sr' folder.
+        """Extract natural_earth from tar.gz and add to ZIM.
 
         Extracts the cached natural_earth tar.gz file and adds all contents to the ZIM,
         transforming paths from ofm/ne2sr/ to natural_earth/ne2sr/.
@@ -467,7 +474,9 @@ class Processor:
 
         # If file already exists, we're done
         if sprites_tar_gz_path.exists():
-            logger.info(f"  using sprites tar.gz already available at {sprites_tar_gz_path}")
+            logger.info(
+                f"  using sprites tar.gz already available at {sprites_tar_gz_path}"
+            )
             return
 
         # Create assets folder if it doesn't exist
@@ -517,7 +526,9 @@ class Processor:
 
         # If file already exists, we're done
         if styles_tar_gz_path.exists():
-            logger.info(f"  using styles tar.gz already available at {styles_tar_gz_path}")
+            logger.info(
+                f"  using styles tar.gz already available at {styles_tar_gz_path}"
+            )
             return
 
         # Create assets folder if it doesn't exist
@@ -557,13 +568,16 @@ class Processor:
                             style_obj = json.loads(content.decode("utf-8"))
 
                             # Filter layers based on available mbtiles layers
-                            style_obj = self._filter_style_layers(style_obj, available_layers)
+                            style_obj = self._filter_style_layers(
+                                style_obj, available_layers
+                            )
 
                             # Replace domain with relative path
-                            content = json.dumps(style_obj, ensure_ascii=False, indent=2).encode("utf-8")
+                            content = json.dumps(
+                                style_obj, ensure_ascii=False, indent=2
+                            ).encode("utf-8")
                             content = content.replace(
-                                b"https://__TILEJSON_DOMAIN__",
-                                b"."
+                                b"https://__TILEJSON_DOMAIN__", b"."
                             )
 
                         # Transform path from ofm/... to styles/...
@@ -607,7 +621,9 @@ class Processor:
         return set()
 
     @staticmethod
-    def _filter_style_layers(style_obj: dict, available_layers: set[str]) -> dict:
+    def _filter_style_layers(
+        style_obj: dict[str, Any], available_layers: set[str]
+    ) -> dict[str, Any]:
         """Remove layers from style that reference non-existent source-layers.
 
         Filters the style's layer array to only include layers that reference
@@ -616,7 +632,7 @@ class Processor:
         if "layers" not in style_obj or not available_layers:
             return style_obj
 
-        filtered_layers = []
+        filtered_layers: list[Any] = []
         for layer in style_obj["layers"]:
             # If layer has no source-layer, keep it (e.g., background layers)
             if "source-layer" not in layer:
@@ -691,9 +707,10 @@ class Processor:
         for line in files_list_content.strip().split("\n"):
             # Look for pattern: areas/{area}/{timestamp}_{suffix}/tiles.mbtiles
             if f"areas/{context.area}/" in line and "tiles.mbtiles" in line:
-                # Extract timestamp from path: areas/{area}/{YYYYMMDD_HHMMSS_XX}/tiles.mbtiles
+                # Extract timestamp from path:
+                # areas/{area}/{YYYYMMDD_HHMMSS_XX}/tiles.mbtiles
                 parts = line.split("/")
-                if len(parts) >= 4:
+                if len(parts) >= 4:  # noqa: PLR2004
                     timestamp_part = parts[2]  # e.g., "20250907_231001_pt"
                     timestamp = timestamp_part.split("_")[0]  # e.g., "20250907"
 
@@ -742,7 +759,7 @@ class Processor:
                 # Decompress gzipped tile data
                 try:
                     tile_data = gzip.decompress(tile_data)
-                except (OSError, gzip.BadGzipFile):
+                except OSError, gzip.BadGzipFile:
                     # If decompression fails, assume data is already uncompressed
                     pass
 
@@ -762,10 +779,9 @@ class Processor:
 
                 # Log progress if more than 1 minute since last log
                 current_time = time.time()
-                if current_time - last_log_time > 60:
+                if current_time - last_log_time > LOG_EVERY_SECONDS:
                     logger.info(
-                        f"  Added {i}/{total} dedupl files "
-                        f"({i / total * 100:.1f}%)"
+                        f"  Added {i}/{total} dedupl files ({i / total * 100:.1f}%)"
                     )
                     last_log_time = current_time
         finally:
@@ -787,7 +803,8 @@ class Processor:
 
             last_log_time = time.time()
             c.execute(
-                "select zoom_level, tile_column, tile_row, tile_data_id from tiles_shallow"
+                "select zoom_level, tile_column, tile_row, tile_data_id "
+                "from tiles_shallow"
             )
             for i, row in enumerate(c, start=1):
                 z = row[0]
@@ -808,7 +825,7 @@ class Processor:
 
                 # Log progress if more than 1 minute since last log
                 current_time = time.time()
-                if current_time - last_log_time > 60:
+                if current_time - last_log_time > LOG_EVERY_SECONDS:
                     logger.info(
                         f"  Created {i}/{total} tile redirects "
                         f"({i / total * 100:.1f}%)"
@@ -837,7 +854,7 @@ class Processor:
         Converts from TMS (Tile Map Service) convention to Web Mercator.
         """
         return (2**zoom - 1) - y
-    
+
     def _write_tilejson(self, creator: Creator):
         """Generate TileJSON 3.0.0 file from mbtiles metadata.
 
@@ -853,13 +870,14 @@ class Processor:
             metadata = dict(c.execute("select name, value from metadata").fetchall())
 
             # Initialize TileJSON with version
-            tilejson = {"tilejson": "3.0.0"}
+            tilejson: dict[str, Any] = {"tilejson": "3.0.0"}
 
             # Extract and parse JSON metadata
             if "json" in metadata:
                 metadata_json_key = json.loads(metadata.pop("json"))
                 tilejson["vector_layers"] = metadata_json_key.pop("vector_layers")
-                assert not metadata_json_key, "Unexpected keys in json metadata"
+                if not metadata_json_key:
+                    raise ValueError("Unexpected keys in json metadata")
 
             # Set tiles path - use relative path for ZIM
             # The tiles are located at tiles/{z}/{x}/{y}.pbf relative to ZIM root
@@ -868,13 +886,17 @@ class Processor:
             # Set attribution
             tilejson["attribution"] = (
                 '<a href="https://openfreemap.org" target="_blank">OpenFreeMap</a> '
-                '<a href="https://www.openmaptiles.org/" target="_blank">&copy; OpenMapTiles</a> '
-                'Data from <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>'
+                '<a href="https://www.openmaptiles.org/" target="_blank">'
+                "&copy; OpenMapTiles</a> "
+                'Data from <a href="https://www.openstreetmap.org/copyright" '
+                'target="_blank">OpenStreetMap</a>'
             )
 
             # Set bounds as list of floats
             if "bounds" in metadata:
-                tilejson["bounds"] = [float(n) for n in metadata.pop("bounds").split(",")]
+                tilejson["bounds"] = [
+                    float(n) for n in metadata.pop("bounds").split(",")
+                ]
 
             # Set center as [lon, lat, zoom]
             if "center" in metadata:
