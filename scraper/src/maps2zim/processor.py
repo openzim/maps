@@ -233,7 +233,11 @@ class Processor:
 
         context.current_thread_workitem = "tile files"
         self._write_title_files(creator)
-        
+
+        context.current_thread_workitem = "tilejson"
+        self._write_tilejson(creator)
+
+
 
     def _report_progress(self):
         """report progress to stats file"""
@@ -521,3 +525,76 @@ class Processor:
         Converts from TMS (Tile Map Service) convention to Web Mercator.
         """
         return (2**zoom - 1) - y
+    
+    def _write_tilejson(self, creator: Creator):
+        """Generate TileJSON 3.0.0 file from mbtiles metadata.
+
+        Reads metadata from the mbtiles database and generates a TileJSON file
+        that describes the tileset for use by the web UI.
+        """
+        mbtiles_path = context.assets_folder / f"{context.area}.mbtiles"
+        conn = sqlite3.connect(mbtiles_path)
+        c = conn.cursor()
+
+        try:
+            # Read metadata from mbtiles
+            metadata = dict(c.execute("select name, value from metadata").fetchall())
+
+            # Initialize TileJSON with version
+            tilejson = {"tilejson": "3.0.0"}
+
+            # Extract and parse JSON metadata
+            if "json" in metadata:
+                metadata_json_key = json.loads(metadata.pop("json"))
+                tilejson["vector_layers"] = metadata_json_key.pop("vector_layers")
+                assert not metadata_json_key, "Unexpected keys in json metadata"
+
+            # Set tiles path - use relative path for ZIM
+            # The tiles are located at tiles/{z}/{x}/{y}.pbf relative to ZIM root
+            tilejson["tiles"] = ["tiles/{z}/{x}/{y}.pbf"]
+
+            # Set attribution
+            tilejson["attribution"] = (
+                '<a href="https://openfreemap.org" target="_blank">OpenFreeMap</a> '
+                '<a href="https://www.openmaptiles.org/" target="_blank">&copy; OpenMapTiles</a> '
+                'Data from <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>'
+            )
+
+            # Set bounds as list of floats
+            if "bounds" in metadata:
+                tilejson["bounds"] = [float(n) for n in metadata.pop("bounds").split(",")]
+
+            # Set center as [lon, lat, zoom]
+            if "center" in metadata:
+                center = [float(n) for n in metadata.pop("center").split(",")]
+                center[2] = 1  # Set default zoom level
+                tilejson["center"] = center
+
+            # Set description
+            if "description" in metadata:
+                tilejson["description"] = metadata.pop("description")
+
+            # Set zoom levels
+            if "maxzoom" in metadata:
+                tilejson["maxzoom"] = int(metadata.pop("maxzoom"))
+            if "minzoom" in metadata:
+                tilejson["minzoom"] = int(metadata.pop("minzoom"))
+
+            # Set name
+            if "name" in metadata:
+                tilejson["name"] = metadata.pop("name")
+
+            # Set version
+            if "version" in metadata:
+                tilejson["version"] = metadata.pop("version")
+
+            # Write TileJSON to ZIM
+            tilejson_content = json.dumps(tilejson, ensure_ascii=False, indent=2)
+            creator.add_item_for(
+                path="tilejson.json",
+                content=tilejson_content.encode("utf-8"),
+                mimetype="application/json",
+            )
+            logger.info("  TileJSON file written to ZIM")
+        finally:
+            conn.close()
