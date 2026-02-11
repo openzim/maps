@@ -240,8 +240,17 @@ class Processor:
         context.current_thread_workitem = "write sprites"
         self._write_sprites(creator)
 
+        context.current_thread_workitem = "download styles"
+        self._fetch_styles_tar_gz()
+
+        context.current_thread_workitem = "write styles"
+        self._write_styles(creator)
+
         context.current_thread_workitem = "download mbtiles"
         self._fetch_mbtiles()
+
+        context.current_thread_workitem = "tilejson"
+        self._write_tilejson(creator)
 
         # Count items for progress reporting
         dedupl_count, tile_count = self._count_mbtiles_items()
@@ -252,9 +261,6 @@ class Processor:
 
         context.current_thread_workitem = "tile files"
         self._write_title_files(creator)
-
-        context.current_thread_workitem = "tilejson"
-        self._write_tilejson(creator)
 
 
 
@@ -389,7 +395,7 @@ class Processor:
                     f = tar.extractfile(member)
                     if f is not None:
                         content = f.read()
-                        # Transform path from ofm/... to fonts/...
+                        # Transform path from ofm/{fontstack}/{range}.pbf to fonts/{fontstack}/{range}.pbf
                         relative_path = member.name.replace("ofm/", "", 1)
                         zim_path = f"fonts/{relative_path}"
                         creator.add_item_for(
@@ -423,10 +429,10 @@ class Processor:
         logger.info(f"  natural_earth tar.gz saved to {natural_earth_tar_gz_path}")
 
     def _write_natural_earth(self, creator: Creator):
-        """Extract natural_earth from tar.gz and add to ZIM under 'natural_earth/n2sr' folder.
+        """Extract natural_earth from tar.gz and add to ZIM under 'natural_earth/ne2sr' folder.
 
         Extracts the cached natural_earth tar.gz file and adds all contents to the ZIM,
-        transforming paths from ofm/ne2sr/ to natural_earth/n2sr/.
+        transforming paths from ofm/ne2sr/ to natural_earth/ne2sr/.
         """
         natural_earth_tar_gz_path = context.assets_folder / "natural_earth.tar.gz"
 
@@ -440,9 +446,9 @@ class Processor:
                     f = tar.extractfile(member)
                     if f is not None:
                         content = f.read()
-                        # Transform path from ofm/ne2sr/... to natural_earth/n2sr/...
+                        # Transform path from ofm/ne2sr/... to natural_earth/ne2sr/...
                         relative_path = member.name.replace("ofm/ne2sr/", "", 1)
-                        zim_path = f"natural_earth/n2sr/{relative_path}"
+                        zim_path = f"natural_earth/ne2sr/{relative_path}"
                         creator.add_item_for(
                             path=zim_path,
                             content=content,
@@ -474,10 +480,10 @@ class Processor:
         logger.info(f"  sprites tar.gz saved to {sprites_tar_gz_path}")
 
     def _write_sprites(self, creator: Creator):
-        """Extract sprites from tar.gz and add to ZIM under 'sprites' folder.
+        """Extract sprites from tar.gz and add to ZIM under 'sprites/ofm_f384' folder.
 
         Extracts the cached sprites tar.gz file and adds all contents to the ZIM,
-        transforming paths from ofm_f384/ to sprites/.
+        transforming paths from ofm_f384/ to sprites/ofm_f384/.
         """
         sprites_tar_gz_path = context.assets_folder / "sprites.tar.gz"
 
@@ -491,15 +497,77 @@ class Processor:
                     f = tar.extractfile(member)
                     if f is not None:
                         content = f.read()
-                        # Transform path from ofm_f384/... to sprites/...
-                        relative_path = member.name.replace("ofm_f384/", "", 1)
-                        zim_path = f"sprites/{relative_path}"
+                        # Transform path from ofm_f384/... to sprites/ofm_f384/...
+                        zim_path = f"sprites/{member.name}"
                         creator.add_item_for(
                             path=zim_path,
                             content=content,
                         )
 
         logger.info("  Sprites added to ZIM")
+
+    def _fetch_styles_tar_gz(self):
+        """Download styles tar.gz from OpenFreeMap if not already cached.
+
+        If file already exists in assets folder, do nothing.
+        Otherwise, download from https://assets.openfreemap.com/styles/ofm.tar.gz
+        """
+        styles_tar_gz_path = context.assets_folder / "styles.tar.gz"
+
+        # If file already exists, we're done
+        if styles_tar_gz_path.exists():
+            logger.info(f"  using styles tar.gz already available at {styles_tar_gz_path}")
+            return
+
+        # Create assets folder if it doesn't exist
+        context.assets_folder.mkdir(parents=True, exist_ok=True)
+
+        logger.info("  Downloading styles from OpenFreeMap")
+        stream_file(
+            "https://assets.openfreemap.com/styles/ofm.tar.gz",
+            fpath=styles_tar_gz_path,
+        )
+        logger.info(f"  styles tar.gz saved to {styles_tar_gz_path}")
+
+    def _write_styles(self, creator: Creator):
+        """Extract styles from tar.gz and add to ZIM under 'styles' folder.
+
+        Extracts the cached styles tar.gz file, modifies JSON files to use relative
+        paths by replacing the domain with '.', and adds all contents to the ZIM
+        without the .json extension.
+        """
+        styles_tar_gz_path = context.assets_folder / "styles.tar.gz"
+
+        logger.info("  Extracting styles and adding to ZIM")
+
+        # Extract and add styles to ZIM
+        with tarfile.open(styles_tar_gz_path, "r:gz") as tar:
+            for member in tar.getmembers():
+                if member.isfile():
+                    # Extract file content
+                    f = tar.extractfile(member)
+                    if f is not None:
+                        content = f.read()
+
+                        # If it's a JSON file, replace domain with relative path
+                        if member.name.endswith(".json"):
+                            content = content.replace(
+                                b"https://__TILEJSON_DOMAIN__",
+                                b"."
+                            )
+
+                        # Transform path from ofm/... to styles/...
+                        relative_path = member.name.replace("ofm/", "", 1)
+                        # Remove .json extension from style files
+                        if relative_path.endswith(".json"):
+                            relative_path = relative_path[:-5]
+                        zim_path = f"styles/{relative_path}"
+                        creator.add_item_for(
+                            path=zim_path,
+                            content=content,
+                        )
+
+        logger.info("  Styles added to ZIM")
 
     def _count_mbtiles_items(self) -> tuple[int, int]:
         """Count total dedupl and tile items in mbtiles database.
@@ -656,7 +724,7 @@ class Processor:
                 dedupl_id = row[3]
 
                 # Calculate paths
-                tile_path = f"tiles/{z}/{x}/{y}.pbf"
+                tile_path = f"./tiles/{z}/{x}/{y}.pbf"
                 dedupl_path = f"dedupl/{self._dedupl_helper_path(dedupl_id)}"
 
                 # Create redirect from tile to dedupl
@@ -763,7 +831,7 @@ class Processor:
             # Write TileJSON to ZIM
             tilejson_content = json.dumps(tilejson, ensure_ascii=False, indent=2)
             creator.add_item_for(
-                path="tilejson.json",
+                path="planet",
                 content=tilejson_content.encode("utf-8"),
                 mimetype="application/json",
             )
