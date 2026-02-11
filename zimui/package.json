@@ -13,7 +13,6 @@
   "engines": {
     "node": ">=24 <24.6 || >=24.7 <25"
   },
-
   "devDependencies": {
     "vite": "6.2.4",
     "prettier": "3.8.1",

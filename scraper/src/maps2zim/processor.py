@@ -1,8 +1,13 @@
 import datetime
+import gzip
 import json
 import logging
+import sqlite3
+import tarfile
+import time
 from io import BytesIO
 from pathlib import Path
+from typing import Any
 
 from schedule import every, run_pending
 from zimscraperlib.image import convert_image, resize_image
@@ -27,6 +32,8 @@ from maps2zim.zimconfig import ZimConfig
 
 context = Context.get()
 logger = context.logger
+
+LOG_EVERY_SECONDS = 60
 
 
 class Processor:
@@ -219,6 +226,46 @@ class Processor:
                     is_front=False,
                 )
 
+        context.current_thread_workitem = "download fonts"
+        self._fetch_fonts_tar_gz()
+
+        context.current_thread_workitem = "write fonts"
+        self._write_fonts(creator)
+
+        context.current_thread_workitem = "download natural_earth"
+        self._fetch_natural_earth_tar_gz()
+
+        context.current_thread_workitem = "write natural_earth"
+        self._write_natural_earth(creator)
+
+        context.current_thread_workitem = "download sprites"
+        self._fetch_sprites_tar_gz()
+
+        context.current_thread_workitem = "write sprites"
+        self._write_sprites(creator)
+
+        context.current_thread_workitem = "download mbtiles"
+        self._fetch_mbtiles()
+
+        context.current_thread_workitem = "download styles"
+        self._fetch_styles_tar_gz()
+
+        context.current_thread_workitem = "write styles"
+        self._write_styles(creator)
+
+        context.current_thread_workitem = "tilejson"
+        self._write_tilejson(creator)
+
+        # Count items for progress reporting
+        dedupl_count, tile_count = self._count_mbtiles_items()
+        self.stats_items_total += dedupl_count + tile_count
+
+        context.current_thread_workitem = "dedupl files"
+        self._write_dedupl_files(creator)
+
+        context.current_thread_workitem = "tile files"
+        self._write_title_files(creator)
+
     def _report_progress(self):
         """report progress to stats file"""
 
@@ -308,3 +355,580 @@ class Processor:
             mimetype="text/html",
             index_data=IndexData(title=title, content=content),
         )
+
+    def _fetch_fonts_tar_gz(self):
+        """Download fonts tar.gz from OpenFreeMap if not already cached.
+
+        If file already exists in assets folder, do nothing.
+        Otherwise, download from https://assets.openfreemap.com/fonts/ofm.tar.gz
+        """
+        fonts_tar_gz_path = context.assets_folder / "ofm.tar.gz"
+
+        # If file already exists, we're done
+        if fonts_tar_gz_path.exists():
+            logger.info(
+                f"  using fonts tar.gz already available at {fonts_tar_gz_path}"
+            )
+            return
+
+        # Create assets folder if it doesn't exist
+        context.assets_folder.mkdir(parents=True, exist_ok=True)
+
+        logger.info("  Downloading fonts from OpenFreeMap")
+        stream_file(
+            "https://assets.openfreemap.com/fonts/ofm.tar.gz",
+            fpath=fonts_tar_gz_path,
+        )
+        logger.info(f"  fonts tar.gz saved to {fonts_tar_gz_path}")
+
+    def _write_fonts(self, creator: Creator):
+        """Extract fonts from tar.gz and add to ZIM under 'fonts' folder.
+
+        Extracts the cached fonts tar.gz file and adds all contents to the ZIM
+        with paths under the 'fonts/' subfolder.
+        """
+        fonts_tar_gz_path = context.assets_folder / "ofm.tar.gz"
+
+        logger.info("  Extracting fonts and adding to ZIM")
+
+        # Extract and add fonts to ZIM
+        with tarfile.open(fonts_tar_gz_path, "r:gz") as tar:
+            for member in tar.getmembers():
+                if member.isfile():
+                    # Extract file content
+                    f = tar.extractfile(member)
+                    if f is not None:
+                        content = f.read()
+                        # Transform path from ofm/{fontstack}/{range}.pbf to
+                        # fonts/{fontstack}/{range}.pbf
+                        relative_path = member.name.replace("ofm/", "", 1)
+                        zim_path = f"fonts/{relative_path}"
+                        creator.add_item_for(
+                            path=zim_path,
+                            content=content,
+                        )
+
+        logger.info("  Fonts added to ZIM")
+
+    def _fetch_natural_earth_tar_gz(self):
+        """Download natural_earth tar.gz from OpenFreeMap if not already cached.
+
+        If file already exists in assets folder, do nothing.
+        Otherwise, download from http://assets.openfreemap.com/natural_earth/ofm.tar.gz
+        """
+        natural_earth_tar_gz_path = context.assets_folder / "natural_earth.tar.gz"
+
+        # If file already exists, we're done
+        if natural_earth_tar_gz_path.exists():
+            logger.info(
+                "  using natural_earth tar.gz already available at "
+                f"{natural_earth_tar_gz_path}"
+            )
+            return
+
+        # Create assets folder if it doesn't exist
+        context.assets_folder.mkdir(parents=True, exist_ok=True)
+
+        logger.info("  Downloading natural_earth from OpenFreeMap")
+        stream_file(
+            "http://assets.openfreemap.com/natural_earth/ofm.tar.gz",
+            fpath=natural_earth_tar_gz_path,
+        )
+        logger.info(f"  natural_earth tar.gz saved to {natural_earth_tar_gz_path}")
+
+    def _write_natural_earth(self, creator: Creator):
+        """Extract natural_earth from tar.gz and add to ZIM.
+
+        Extracts the cached natural_earth tar.gz file and adds all contents to the ZIM,
+        transforming paths from ofm/ne2sr/ to natural_earth/ne2sr/.
+        """
+        natural_earth_tar_gz_path = context.assets_folder / "natural_earth.tar.gz"
+
+        logger.info("  Extracting natural_earth and adding to ZIM")
+
+        # Extract and add natural_earth to ZIM
+        with tarfile.open(natural_earth_tar_gz_path, "r:gz") as tar:
+            for member in tar.getmembers():
+                if member.isfile():
+                    # Extract file content
+                    f = tar.extractfile(member)
+                    if f is not None:
+                        content = f.read()
+                        # Transform path from ofm/ne2sr/... to natural_earth/ne2sr/...
+                        relative_path = member.name.replace("ofm/ne2sr/", "", 1)
+                        zim_path = f"natural_earth/ne2sr/{relative_path}"
+                        creator.add_item_for(
+                            path=zim_path,
+                            content=content,
+                        )
+
+        logger.info("  Natural_earth added to ZIM")
+
+    def _fetch_sprites_tar_gz(self):
+        """Download sprites tar.gz from OpenFreeMap if not already cached.
+
+        If file already exists in assets folder, do nothing.
+        Otherwise, download from https://assets.openfreemap.com/sprites/ofm_f384.tar.gz
+        """
+        sprites_tar_gz_path = context.assets_folder / "sprites.tar.gz"
+
+        # If file already exists, we're done
+        if sprites_tar_gz_path.exists():
+            logger.info(
+                f"  using sprites tar.gz already available at {sprites_tar_gz_path}"
+            )
+            return
+
+        # Create assets folder if it doesn't exist
+        context.assets_folder.mkdir(parents=True, exist_ok=True)
+
+        logger.info("  Downloading sprites from OpenFreeMap")
+        stream_file(
+            "https://assets.openfreemap.com/sprites/ofm_f384.tar.gz",
+            fpath=sprites_tar_gz_path,
+        )
+        logger.info(f"  sprites tar.gz saved to {sprites_tar_gz_path}")
+
+    def _write_sprites(self, creator: Creator):
+        """Extract sprites from tar.gz and add to ZIM under 'sprites/ofm_f384' folder.
+
+        Extracts the cached sprites tar.gz file and adds all contents to the ZIM,
+        transforming paths from ofm_f384/ to sprites/ofm_f384/.
+        """
+        sprites_tar_gz_path = context.assets_folder / "sprites.tar.gz"
+
+        logger.info("  Extracting sprites and adding to ZIM")
+
+        # Extract and add sprites to ZIM
+        with tarfile.open(sprites_tar_gz_path, "r:gz") as tar:
+            for member in tar.getmembers():
+                if member.isfile():
+                    # Extract file content
+                    f = tar.extractfile(member)
+                    if f is not None:
+                        content = f.read()
+                        # Transform path from ofm_f384/... to sprites/ofm_f384/...
+                        zim_path = f"sprites/{member.name}"
+                        creator.add_item_for(
+                            path=zim_path,
+                            content=content,
+                        )
+
+        logger.info("  Sprites added to ZIM")
+
+    def _fetch_styles_tar_gz(self):
+        """Download styles tar.gz from OpenFreeMap if not already cached.
+
+        If file already exists in assets folder, do nothing.
+        Otherwise, download from https://assets.openfreemap.com/styles/ofm.tar.gz
+        """
+        styles_tar_gz_path = context.assets_folder / "styles.tar.gz"
+
+        # If file already exists, we're done
+        if styles_tar_gz_path.exists():
+            logger.info(
+                f"  using styles tar.gz already available at {styles_tar_gz_path}"
+            )
+            return
+
+        # Create assets folder if it doesn't exist
+        context.assets_folder.mkdir(parents=True, exist_ok=True)
+
+        logger.info("  Downloading styles from OpenFreeMap")
+        stream_file(
+            "https://assets.openfreemap.com/styles/ofm.tar.gz",
+            fpath=styles_tar_gz_path,
+        )
+        logger.info(f"  styles tar.gz saved to {styles_tar_gz_path}")
+
+    def _write_styles(self, creator: Creator):
+        """Extract styles from tar.gz and add to ZIM under 'styles' folder.
+
+        Extracts the cached styles tar.gz file, modifies JSON files to use relative
+        paths by replacing the domain with '.', filters layers based on available
+        mbtiles layers, and adds all contents to the ZIM without the .json extension.
+        """
+        styles_tar_gz_path = context.assets_folder / "styles.tar.gz"
+        available_layers = self._get_available_layers_from_mbtiles()
+
+        logger.info("  Extracting styles and adding to ZIM")
+
+        # Extract and add styles to ZIM
+        with tarfile.open(styles_tar_gz_path, "r:gz") as tar:
+            for member in tar.getmembers():
+                if member.isfile():
+                    # Extract file content
+                    f = tar.extractfile(member)
+                    if f is not None:
+                        content = f.read()
+
+                        # If it's a JSON file, process it
+                        if member.name.endswith(".json"):
+                            # Parse JSON
+                            style_obj = json.loads(content.decode("utf-8"))
+
+                            # Filter layers based on available mbtiles layers
+                            style_obj = self._filter_style_layers(
+                                style_obj, available_layers
+                            )
+
+                            # Replace domain with relative path
+                            content = json.dumps(
+                                style_obj, ensure_ascii=False, indent=2
+                            ).encode("utf-8")
+                            content = content.replace(
+                                b"https://__TILEJSON_DOMAIN__", b"."
+                            )
+
+                        # Transform path from ofm/... to styles/...
+                        relative_path = member.name.replace("ofm/", "", 1)
+                        # Remove .json extension from style files
+                        if relative_path.endswith(".json"):
+                            relative_path = relative_path[:-5]
+                        zim_path = f"styles/{relative_path}"
+                        creator.add_item_for(
+                            path=zim_path,
+                            content=content,
+                        )
+
+        logger.info("  Styles added to ZIM")
+
+    def _get_available_layers_from_mbtiles(self) -> set[str]:
+        """Get set of available source-layer names from mbtiles metadata.
+
+        Reads the mbtiles database and extracts the list of available layers
+        from the vector_layers metadata.
+        """
+        mbtiles_path = context.assets_folder / f"{context.area}.mbtiles"
+
+        # If mbtiles doesn't exist yet, return empty set
+        if not mbtiles_path.exists():
+            return set()
+
+        conn = sqlite3.connect(mbtiles_path)
+        c = conn.cursor()
+
+        try:
+            metadata = dict(c.execute("select name, value from metadata").fetchall())
+            if "json" in metadata:
+                metadata_json = json.loads(metadata["json"])
+                if "vector_layers" in metadata_json:
+                    # Extract all layer IDs from vector_layers
+                    return {layer["id"] for layer in metadata_json["vector_layers"]}
+        finally:
+            conn.close()
+
+        return set()
+
+    @staticmethod
+    def _filter_style_layers(
+        style_obj: dict[str, Any], available_layers: set[str]
+    ) -> dict[str, Any]:
+        """Remove layers from style that reference non-existent source-layers.
+
+        Filters the style's layer array to only include layers that reference
+        existing source-layers in the mbtiles database.
+        """
+        if "layers" not in style_obj or not available_layers:
+            return style_obj
+
+        filtered_layers: list[Any] = []
+        for layer in style_obj["layers"]:
+            # If layer has no source-layer, keep it (e.g., background layers)
+            if "source-layer" not in layer:
+                filtered_layers.append(layer)
+            # If source-layer exists in mbtiles, keep it
+            elif layer.get("source-layer") in available_layers:
+                filtered_layers.append(layer)
+            else:
+                logger.debug(
+                    f"Removing layer '{layer.get('id')}' - "
+                    f"source-layer '{layer.get('source-layer')}' not found in mbtiles"
+                )
+
+        style_obj["layers"] = filtered_layers
+        return style_obj
+
+    def _count_mbtiles_items(self) -> tuple[int, int]:
+        """Count total dedupl and tile items in mbtiles database.
+
+        Returns:
+            Tuple of (dedupl_count, tile_count)
+        """
+        mbtiles_path = context.assets_folder / f"{context.area}.mbtiles"
+        conn = sqlite3.connect(mbtiles_path)
+        c = conn.cursor()
+
+        try:
+            dedupl_count = c.execute("select count(*) from tiles_data").fetchone()[0]
+            tile_count = c.execute("select count(*) from tiles_shallow").fetchone()[0]
+            return dedupl_count, tile_count
+        finally:
+            conn.close()
+
+    def _fetch_mbtiles(self):
+        """Ensure mbtiles file is available in assets folder
+
+        If file is already there, do nothing.
+
+        Otherwise, download https://btrfs.openfreemap.com/files.txt file to check
+        latest version published and then download mbtiles file
+        """
+        context.current_thread_workitem = "mbtiles"
+
+        # Determine the mbtiles filename based on area
+        mbtiles_filename = f"{context.area}.mbtiles"
+        mbtiles_path = context.assets_folder / mbtiles_filename
+
+        # If file already exists, we're done
+        if mbtiles_path.exists():
+            logger.info(f"  using mbtiles file already available at {mbtiles_path}")
+            return
+
+        # Create assets folder if it doesn't exist
+        context.assets_folder.mkdir(parents=True, exist_ok=True)
+
+        logger.info(f"  Fetching mbtiles file for area: {context.area}")
+
+        # Download files.txt to check available versions
+        logger.debug("  Downloading file list from openfreemap")
+        files_list_stream = BytesIO()
+        stream_file(
+            "https://btrfs.openfreemap.com/files.txt",
+            byte_stream=files_list_stream,
+        )
+        files_list_stream.seek(0)
+        files_list_content = files_list_stream.read().decode("utf-8")
+
+        # Parse files list to find the latest mbtiles file for the area
+        mbtiles_path_in_list = None
+        latest_timestamp = None
+
+        for line in files_list_content.strip().split("\n"):
+            # Look for pattern: areas/{area}/{timestamp}_{suffix}/tiles.mbtiles
+            if f"areas/{context.area}/" in line and "tiles.mbtiles" in line:
+                # Extract timestamp from path:
+                # areas/{area}/{YYYYMMDD_HHMMSS_XX}/tiles.mbtiles
+                parts = line.split("/")
+                if len(parts) >= 4:  # noqa: PLR2004
+                    timestamp_part = parts[2]  # e.g., "20250907_231001_pt"
+                    timestamp = timestamp_part.split("_")[0]  # e.g., "20250907"
+
+                    # Keep the latest version (highest timestamp)
+                    if latest_timestamp is None or timestamp > latest_timestamp:
+                        latest_timestamp = timestamp
+                        mbtiles_path_in_list = line
+
+        if not mbtiles_path_in_list:
+            raise OSError(
+                f"Could not find tiles.mbtiles for area '{context.area}' "
+                f"in files list from openfreemap"
+            )
+
+        # Construct the full URL
+        mbtiles_url = f"https://btrfs.openfreemap.com/{mbtiles_path_in_list}"
+
+        logger.info(f"  Downloading mbtiles from {mbtiles_url}")
+        stream_file(
+            mbtiles_url,
+            fpath=mbtiles_path,
+        )
+        logger.info(f"  mbtiles file saved to {mbtiles_path}")
+
+    def _write_dedupl_files(self, creator: Creator):
+        """Extract unique tile data from mbtiles and add to ZIM.
+
+        Each unique tile is stored once in the dedupl folder structure.
+        The path structure organizes IDs to keep max 1000 items per directory.
+        Tiles are decompressed from gzip format before adding to ZIM.
+        """
+        mbtiles_path = context.assets_folder / f"{context.area}.mbtiles"
+        conn = sqlite3.connect(mbtiles_path)
+        c = conn.cursor()
+
+        try:
+            total = c.execute("select count(*) from tiles_data").fetchone()[0]
+            logger.info(f"  Adding {total} unique tile data entries to ZIM")
+
+            last_log_time = time.time()
+            c.execute("select tile_data_id, tile_data from tiles_data")
+            for i, row in enumerate(c, start=1):
+                dedupl_id = row[0]
+                tile_data = row[1]
+
+                # Decompress gzipped tile data
+                try:
+                    tile_data = gzip.decompress(tile_data)
+                except OSError, gzip.BadGzipFile:
+                    # If decompression fails, assume data is already uncompressed
+                    pass
+
+                # Calculate dedupl path using the same logic as openfreemap
+                dedupl_path = self._dedupl_helper_path(dedupl_id)
+
+                # Add to ZIM
+                creator.add_item_for(
+                    path=f"dedupl/{dedupl_path}",
+                    content=tile_data,
+                    mimetype="application/x-protobuf",
+                )
+
+                # Update progress
+                self.stats_items_done += 1
+                run_pending()
+
+                # Log progress if more than 1 minute since last log
+                current_time = time.time()
+                if current_time - last_log_time > LOG_EVERY_SECONDS:
+                    logger.info(
+                        f"  Added {i}/{total} dedupl files ({i / total * 100:.1f}%)"
+                    )
+                    last_log_time = current_time
+        finally:
+            conn.close()
+
+    def _write_title_files(self, creator: Creator):
+        """Create redirects from tile paths to dedupl files.
+
+        Uses redirects instead of hardlinks to avoid duplication in ZIM.
+        Each tile path points to the corresponding deduplicated tile data.
+        """
+        mbtiles_path = context.assets_folder / f"{context.area}.mbtiles"
+        conn = sqlite3.connect(mbtiles_path)
+        c = conn.cursor()
+
+        try:
+            total = c.execute("select count(*) from tiles_shallow").fetchone()[0]
+            logger.info(f"  Creating {total} tile redirects in ZIM")
+
+            last_log_time = time.time()
+            c.execute(
+                "select zoom_level, tile_column, tile_row, tile_data_id "
+                "from tiles_shallow"
+            )
+            for i, row in enumerate(c, start=1):
+                z = row[0]
+                x = row[1]
+                y = self._flip_y(z, row[2])
+                dedupl_id = row[3]
+
+                # Calculate paths
+                tile_path = f"tiles/{z}/{x}/{y}.pbf"
+                dedupl_path = f"dedupl/{self._dedupl_helper_path(dedupl_id)}"
+
+                # Create redirect from tile to dedupl
+                creator.add_redirect(tile_path, dedupl_path)
+
+                # Update progress
+                self.stats_items_done += 1
+                run_pending()
+
+                # Log progress if more than 1 minute since last log
+                current_time = time.time()
+                if current_time - last_log_time > LOG_EVERY_SECONDS:
+                    logger.info(
+                        f"  Created {i}/{total} tile redirects "
+                        f"({i / total * 100:.1f}%)"
+                    )
+                    last_log_time = current_time
+        finally:
+            conn.close()
+
+    @staticmethod
+    def _dedupl_helper_path(dedupl_id: int) -> str:
+        """Calculate dedupl path for a given ID.
+
+        Organizes IDs into a 3-level directory structure to keep max
+        1000 items per directory, allowing for 1 billion files.
+        """
+        str_num = f"{dedupl_id:09d}"
+        l1 = str_num[:3]
+        l2 = str_num[3:6]
+        l3 = str_num[6:]
+        return f"{l1}/{l2}/{l3}.pbf"
+
+    @staticmethod
+    def _flip_y(zoom: int, y: int) -> int:
+        """Flip Y coordinate for tile indexing.
+
+        Converts from TMS (Tile Map Service) convention to Web Mercator.
+        """
+        return (2**zoom - 1) - y
+
+    def _write_tilejson(self, creator: Creator):
+        """Generate TileJSON 3.0.0 file from mbtiles metadata.
+
+        Reads metadata from the mbtiles database and generates a TileJSON file
+        that describes the tileset for use by the web UI.
+        """
+        mbtiles_path = context.assets_folder / f"{context.area}.mbtiles"
+        conn = sqlite3.connect(mbtiles_path)
+        c = conn.cursor()
+
+        try:
+            # Read metadata from mbtiles
+            metadata = dict(c.execute("select name, value from metadata").fetchall())
+
+            # Initialize TileJSON with version
+            tilejson: dict[str, Any] = {"tilejson": "3.0.0"}
+
+            # Extract and parse JSON metadata
+            if "json" in metadata:
+                metadata_json_key = json.loads(metadata.pop("json"))
+                tilejson["vector_layers"] = metadata_json_key.pop("vector_layers")
+                if not metadata_json_key:
+                    raise ValueError("Unexpected keys in json metadata")
+
+            # Set tiles path - use relative path for ZIM
+            # The tiles are located at tiles/{z}/{x}/{y}.pbf relative to ZIM root
+            tilejson["tiles"] = ["./tiles/{z}/{x}/{y}.pbf"]
+
+            # Set attribution
+            tilejson["attribution"] = (
+                '<a href="https://openfreemap.org" target="_blank">OpenFreeMap</a> '
+                '<a href="https://www.openmaptiles.org/" target="_blank">'
+                "&copy; OpenMapTiles</a> "
+                'Data from <a href="https://www.openstreetmap.org/copyright" '
+                'target="_blank">OpenStreetMap</a>'
+            )
+
+            # Set bounds as list of floats
+            if "bounds" in metadata:
+                tilejson["bounds"] = [
+                    float(n) for n in metadata.pop("bounds").split(",")
+                ]
+
+            # Set center as [lon, lat, zoom]
+            if "center" in metadata:
+                center = [float(n) for n in metadata.pop("center").split(",")]
+                center[2] = 1  # Set default zoom level
+                tilejson["center"] = center
+
+            # Set description
+            if "description" in metadata:
+                tilejson["description"] = metadata.pop("description")
+
+            # Set zoom levels
+            if "maxzoom" in metadata:
+                tilejson["maxzoom"] = int(metadata.pop("maxzoom"))
+            if "minzoom" in metadata:
+                tilejson["minzoom"] = int(metadata.pop("minzoom"))
+
+            # Set name
+            if "name" in metadata:
+                tilejson["name"] = metadata.pop("name")
+
+            # Set version
+            if "version" in metadata:
+                tilejson["version"] = metadata.pop("version")
+
+            # Write TileJSON to ZIM
+            tilejson_content = json.dumps(tilejson, ensure_ascii=False, indent=2)
+            creator.add_item_for(
+                path="planet",
+                content=tilejson_content.encode("utf-8"),
+                mimetype="application/json",
+            )
+            logger.info("  TileJSON file written to ZIM")
+        finally:
+            conn.close()

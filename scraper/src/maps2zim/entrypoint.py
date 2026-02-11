@@ -107,6 +107,14 @@ def prepare_context(raw_args: list[str], tmpdir: str) -> None:
         dest="tmp_folder",
     )
 
+    parser.add_argument(
+        "--assets",
+        help="Folder folder to fetch / store downloaded assets (can be reused across "
+        "runs)",
+        type=Path,
+        dest="assets_folder",
+    )
+
     parser.add_argument("--debug", help="Enable verbose output", action="store_true")
 
     parser.add_argument(
@@ -134,6 +142,11 @@ def prepare_context(raw_args: list[str], tmpdir: str) -> None:
         help="Contact information to pass in User-Agent headers",
     )
 
+    parser.add_argument(
+        "--area",
+        help=f"Area to download, either planet or monaco. Default: {Context.area!s}",
+    )
+
     args = parser.parse_args(raw_args)
 
     # Ignore unset values so they do not override the default specified in Context
@@ -146,6 +159,9 @@ def prepare_context(raw_args: list[str], tmpdir: str) -> None:
             args_dict["tmp_folder"] = Path(MAPS_TMP)
         else:
             args_dict["tmp_folder"] = Path(tmpdir)
+
+    if not args_dict.get("assets_folder", None):
+        args_dict["assets_folder"] = args_dict["tmp_folder"] / "assets"
 
     args_dict["_current_thread_workitem"] = threading.local()
     args_dict["web_session"] = get_session()

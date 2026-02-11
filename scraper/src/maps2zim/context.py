@@ -41,6 +41,9 @@ class Context:
     # temporary folder to store temporary assets (e.g. cached API response)
     tmp_folder: Path
 
+    # folder to fetch / store downloaded assets (can be reused across runs)
+    assets_folder: Path
+
     # folder where the ZIM will be built
     output_folder: Path = Path(os.getenv("MAPS_OUTPUT", "output"))
 
@@ -86,6 +89,14 @@ class Context:
     logger: logging.Logger = getLogger(  # noqa: RUF009
         NAME, level=logging.DEBUG, log_format=DEFAULT_FORMAT_WITH_THREADS
     )
+
+    # ------------------------------
+    # Maps specific arguments
+    # ------------------------------
+
+    # By default, download only monaco area ; specify planet to download the whole
+    # planet
+    area: str = "monaco"
 
     @classmethod
     def setup(cls, **kwargs: Any):
