@@ -234,6 +234,12 @@ class Processor:
         context.current_thread_workitem = "write natural_earth"
         self._write_natural_earth(creator)
 
+        context.current_thread_workitem = "download sprites"
+        self._fetch_sprites_tar_gz()
+
+        context.current_thread_workitem = "write sprites"
+        self._write_sprites(creator)
+
         context.current_thread_workitem = "download mbtiles"
         self._fetch_mbtiles()
 
@@ -443,6 +449,57 @@ class Processor:
                         )
 
         logger.info("  Natural_earth added to ZIM")
+
+    def _fetch_sprites_tar_gz(self):
+        """Download sprites tar.gz from OpenFreeMap if not already cached.
+
+        If file already exists in assets folder, do nothing.
+        Otherwise, download from https://assets.openfreemap.com/sprites/ofm_f384.tar.gz
+        """
+        sprites_tar_gz_path = context.assets_folder / "sprites.tar.gz"
+
+        # If file already exists, we're done
+        if sprites_tar_gz_path.exists():
+            logger.info(f"  using sprites tar.gz already available at {sprites_tar_gz_path}")
+            return
+
+        # Create assets folder if it doesn't exist
+        context.assets_folder.mkdir(parents=True, exist_ok=True)
+
+        logger.info("  Downloading sprites from OpenFreeMap")
+        stream_file(
+            "https://assets.openfreemap.com/sprites/ofm_f384.tar.gz",
+            fpath=sprites_tar_gz_path,
+        )
+        logger.info(f"  sprites tar.gz saved to {sprites_tar_gz_path}")
+
+    def _write_sprites(self, creator: Creator):
+        """Extract sprites from tar.gz and add to ZIM under 'sprites' folder.
+
+        Extracts the cached sprites tar.gz file and adds all contents to the ZIM,
+        transforming paths from ofm_f384/ to sprites/.
+        """
+        sprites_tar_gz_path = context.assets_folder / "sprites.tar.gz"
+
+        logger.info("  Extracting sprites and adding to ZIM")
+
+        # Extract and add sprites to ZIM
+        with tarfile.open(sprites_tar_gz_path, "r:gz") as tar:
+            for member in tar.getmembers():
+                if member.isfile():
+                    # Extract file content
+                    f = tar.extractfile(member)
+                    if f is not None:
+                        content = f.read()
+                        # Transform path from ofm_f384/... to sprites/...
+                        relative_path = member.name.replace("ofm_f384/", "", 1)
+                        zim_path = f"sprites/{relative_path}"
+                        creator.add_item_for(
+                            path=zim_path,
+                            content=content,
+                        )
+
+        logger.info("  Sprites added to ZIM")
 
     def _count_mbtiles_items(self) -> tuple[int, int]:
         """Count total dedupl and tile items in mbtiles database.
