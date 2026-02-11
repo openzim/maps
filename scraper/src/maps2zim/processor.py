@@ -1,4 +1,5 @@
 import datetime
+import gzip
 import json
 import logging
 import sqlite3
@@ -722,6 +723,7 @@ class Processor:
 
         Each unique tile is stored once in the dedupl folder structure.
         The path structure organizes IDs to keep max 1000 items per directory.
+        Tiles are decompressed from gzip format before adding to ZIM.
         """
         mbtiles_path = context.assets_folder / f"{context.area}.mbtiles"
         conn = sqlite3.connect(mbtiles_path)
@@ -736,6 +738,13 @@ class Processor:
             for i, row in enumerate(c, start=1):
                 dedupl_id = row[0]
                 tile_data = row[1]
+
+                # Decompress gzipped tile data
+                try:
+                    tile_data = gzip.decompress(tile_data)
+                except (OSError, gzip.BadGzipFile):
+                    # If decompression fails, assume data is already uncompressed
+                    pass
 
                 # Calculate dedupl path using the same logic as openfreemap
                 dedupl_path = self._dedupl_helper_path(dedupl_id)
