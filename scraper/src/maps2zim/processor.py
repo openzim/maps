@@ -27,6 +27,7 @@ from maps2zim.constants import (
 from maps2zim.context import Context
 from maps2zim.download import stream_file
 from maps2zim.errors import NoIllustrationFoundError
+from maps2zim.tile_filter import TileFilter
 from maps2zim.ui import ConfigModel
 from maps2zim.zimconfig import ZimConfig
 
@@ -256,15 +257,25 @@ class Processor:
         context.current_thread_workitem = "tilejson"
         self._write_tilejson(creator)
 
+        # Initialize tile filter if poly files are specified
+        tile_filter = None
+        if context.include_poly_urls:
+            context.current_thread_workitem = "loading poly files"
+            logger.info("  Downloading and loading .poly file(s) for filtering")
+            tile_filter = TileFilter(context.include_poly_urls)
+            logger.info(
+                f"  Loaded {tile_filter.polygon_count} polygon(s) for filtering"
+            )
+
         # Count items for progress reporting
-        dedupl_count, tile_count = self._count_mbtiles_items()
+        dedupl_count, tile_count = self._count_mbtiles_items(tile_filter)
         self.stats_items_total += dedupl_count + tile_count
 
         context.current_thread_workitem = "dedupl files"
-        self._write_dedupl_files(creator)
+        self._write_dedupl_files(creator, tile_filter)
 
         context.current_thread_workitem = "tile files"
-        self._write_title_files(creator)
+        self._write_title_files(creator, tile_filter)
 
     def _report_progress(self):
         """report progress to stats file"""
@@ -649,8 +660,13 @@ class Processor:
         style_obj["layers"] = filtered_layers
         return style_obj
 
-    def _count_mbtiles_items(self) -> tuple[int, int]:
+    def _count_mbtiles_items(self, tile_filter: Any = None) -> tuple[int, int]:
         """Count total dedupl and tile items in mbtiles database.
+
+        Optionally filters based on tile regions if tile_filter is provided.
+
+        Args:
+            tile_filter: Optional TileFilter object for geographic filtering
 
         Returns:
             Tuple of (dedupl_count, tile_count)
@@ -660,8 +676,34 @@ class Processor:
         c = conn.cursor()
 
         try:
-            dedupl_count = c.execute("select count(*) from tiles_data").fetchone()[0]
-            tile_count = c.execute("select count(*) from tiles_shallow").fetchone()[0]
+            if tile_filter:
+                # Count only tiles that intersect with filter regions
+                c.execute(
+                    "select zoom_level, tile_column, tile_row, tile_data_id "
+                    "from tiles_shallow"
+                )
+                filtered_dedup_ids: set[int] = set()
+                tile_count = 0
+
+                for row in c:
+                    z = row[0]
+                    x = row[1]
+                    y = self._flip_y(z, row[2])
+                    dedup_id = row[3]
+
+                    if tile_filter.tile_intersects(z, x, y):
+                        tile_count += 1
+                        filtered_dedup_ids.add(dedup_id)
+
+                dedupl_count = len(filtered_dedup_ids)
+            else:
+                dedupl_count = c.execute("select count(*) from tiles_data").fetchone()[
+                    0
+                ]
+                tile_count = c.execute("select count(*) from tiles_shallow").fetchone()[
+                    0
+                ]
+
             return dedupl_count, tile_count
         finally:
             conn.close()
@@ -735,25 +777,63 @@ class Processor:
         )
         logger.info(f"  mbtiles file saved to {mbtiles_path}")
 
-    def _write_dedupl_files(self, creator: Creator):
+    def _write_dedupl_files(self, creator: Creator, tile_filter: Any = None):
         """Extract unique tile data from mbtiles and add to ZIM.
 
         Each unique tile is stored once in the dedupl folder structure.
         The path structure organizes IDs to keep max 1000 items per directory.
         Tiles are decompressed from gzip format before adding to ZIM.
+
+        Args:
+            creator: ZIM creator object
+            tile_filter: Optional TileFilter object for geographic filtering
         """
         mbtiles_path = context.assets_folder / f"{context.area}.mbtiles"
         conn = sqlite3.connect(mbtiles_path)
         c = conn.cursor()
 
         try:
-            total = c.execute("select count(*) from tiles_data").fetchone()[0]
+            # If filtering, first get the set of dedup IDs that are referenced by
+            # filtered tiles
+            dedup_ids_to_write: set[int] | None = None
+            if tile_filter:
+                logger.debug("  Collecting dedup IDs from filtered tiles")
+                c.execute(
+                    "select zoom_level, tile_column, tile_row, tile_data_id "
+                    "from tiles_shallow"
+                )
+                dedup_ids_to_write = set()
+
+                for row in c:
+                    z = row[0]
+                    x = row[1]
+                    y = self._flip_y(z, row[2])
+                    dedup_id = row[3]
+
+                    if tile_filter.tile_intersects(z, x, y):
+                        dedup_ids_to_write.add(dedup_id)
+
+            total = (
+                len(dedup_ids_to_write)
+                if dedup_ids_to_write
+                else c.execute("select count(*) from tiles_data").fetchone()[0]
+            )
             logger.info(f"  Adding {total} unique tile data entries to ZIM")
 
             last_log_time = time.time()
             c.execute("select tile_data_id, tile_data from tiles_data")
-            for i, row in enumerate(c, start=1):
+            processed_count = 0
+
+            for row in c:
                 dedupl_id = row[0]
+
+                # Skip this dedup if we're filtering and it's not in the filtered set
+                if (
+                    dedup_ids_to_write is not None
+                    and dedupl_id not in dedup_ids_to_write
+                ):
+                    continue
+
                 tile_data = row[1]
 
                 # Decompress gzipped tile data
@@ -776,22 +856,28 @@ class Processor:
                 # Update progress
                 self.stats_items_done += 1
                 run_pending()
+                processed_count += 1
 
                 # Log progress if more than 1 minute since last log
                 current_time = time.time()
                 if current_time - last_log_time > LOG_EVERY_SECONDS:
                     logger.info(
-                        f"  Added {i}/{total} dedupl files ({i / total * 100:.1f}%)"
+                        f"  Added {processed_count}/{total} dedupl files "
+                        f"({processed_count / total * 100:.1f}%)"
                     )
                     last_log_time = current_time
         finally:
             conn.close()
 
-    def _write_title_files(self, creator: Creator):
+    def _write_title_files(self, creator: Creator, tile_filter: Any = None):
         """Create redirects from tile paths to dedupl files.
 
         Uses redirects instead of hardlinks to avoid duplication in ZIM.
         Each tile path points to the corresponding deduplicated tile data.
+
+        Args:
+            creator: ZIM creator object
+            tile_filter: Optional TileFilter object for geographic filtering
         """
         mbtiles_path = context.assets_folder / f"{context.area}.mbtiles"
         conn = sqlite3.connect(mbtiles_path)
@@ -799,18 +885,25 @@ class Processor:
 
         try:
             total = c.execute("select count(*) from tiles_shallow").fetchone()[0]
-            logger.info(f"  Creating {total} tile redirects in ZIM")
+            logger.info("  Creating tile redirects in ZIM")
 
             last_log_time = time.time()
             c.execute(
                 "select zoom_level, tile_column, tile_row, tile_data_id "
                 "from tiles_shallow"
             )
-            for i, row in enumerate(c, start=1):
+            created_count = 0
+
+            for row in c:
                 z = row[0]
                 x = row[1]
-                y = self._flip_y(z, row[2])
+                y_raw = row[2]
+                y = self._flip_y(z, y_raw)
                 dedupl_id = row[3]
+
+                # Skip tile if filtering and it doesn't intersect
+                if tile_filter and not tile_filter.tile_intersects(z, x, y):
+                    continue
 
                 # Calculate paths
                 tile_path = f"tiles/{z}/{x}/{y}.pbf"
@@ -822,13 +915,14 @@ class Processor:
                 # Update progress
                 self.stats_items_done += 1
                 run_pending()
+                created_count += 1
 
                 # Log progress if more than 1 minute since last log
                 current_time = time.time()
                 if current_time - last_log_time > LOG_EVERY_SECONDS:
                     logger.info(
-                        f"  Created {i}/{total} tile redirects "
-                        f"({i / total * 100:.1f}%)"
+                        f"  Created {created_count} tile redirects "
+                        f"(filtered from {total})"
                     )
                     last_log_time = current_time
         finally:

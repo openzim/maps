@@ -147,6 +147,14 @@ def prepare_context(raw_args: list[str], tmpdir: str) -> None:
         help=f"Area to download, either planet or monaco. Default: {Context.area!s}",
     )
 
+    parser.add_argument(
+        "--include-poly",
+        help="Comma-separated URL(s) of .poly file(s) defining regions to include. "
+        "Files will be downloaded and only tiles intersecting these regions will be "
+        "included in the ZIM.",
+        dest="include_poly_urls",
+    )
+
     args = parser.parse_args(raw_args)
 
     # Ignore unset values so they do not override the default specified in Context

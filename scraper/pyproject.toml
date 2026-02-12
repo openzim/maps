@@ -11,6 +11,7 @@ dependencies = [
   "zimscraperlib==5.3.0",
   "pydantic==2.12.5",
   "schedule==1.2.2",
+  "shapely==2.1.2",
 ]
 dynamic = ["authors", "classifiers", "keywords", "license", "version", "urls"]
 

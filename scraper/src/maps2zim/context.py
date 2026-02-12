@@ -98,6 +98,9 @@ class Context:
     # planet
     area: str = "monaco"
 
+    # Comma-separated URLs of .poly files defining regions to include tiles from
+    include_poly_urls: str | None = None
+
     @classmethod
     def setup(cls, **kwargs: Any):
         new_instance = cls(**kwargs)
