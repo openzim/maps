@@ -874,10 +874,12 @@ class Processor:
 
             # Extract and parse JSON metadata
             if "json" in metadata:
-                metadata_json_key = json.loads(metadata.pop("json"))
+                metadata_json_key: dict[str, Any] = json.loads(metadata.pop("json"))
                 tilejson["vector_layers"] = metadata_json_key.pop("vector_layers")
-                if not metadata_json_key:
-                    raise ValueError("Unexpected keys in json metadata")
+                if metadata_json_key:  # check that no more keys are left
+                    raise ValueError(
+                        f"Unexpected keys in json metadata: {metadata_json_key.keys()}"
+                    )
 
             # Set tiles path - use relative path for ZIM
             # The tiles are located at tiles/{z}/{x}/{y}.pbf relative to ZIM root
