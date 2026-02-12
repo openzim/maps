@@ -6,7 +6,7 @@ from tempfile import TemporaryDirectory
 import pytest
 from shapely.geometry import Point, Polygon
 
-from maps2zim.tile_filter import parse_poly_file, tile_to_bbox
+from maps2zim.tile_filter import TileFilter, parse_poly_file, tile_to_bbox
 
 
 def test_tile_to_bbox():
@@ -123,3 +123,53 @@ def test_parse_poly_file_empty():
 
         with pytest.raises(ValueError):
             parse_poly_file(poly_path)
+
+
+def test_tile_filter_zoom_no_filter():
+    """Test that tiles at or below max_zoom_no_filter are always included."""
+    # Create filter with max_zoom_no_filter=5
+    tile_filter = TileFilter("", max_zoom_no_filter=5)
+
+    # Tiles at zoom 0-5 should be included
+    assert tile_filter.tile_intersects(0, 0, 0) is True
+    assert tile_filter.tile_intersects(3, 2, 4) is True
+    assert tile_filter.tile_intersects(5, 10, 20) is True
+
+    # Tiles at zoom > 5 should also be included (no poly filtering)
+    assert tile_filter.tile_intersects(6, 30, 40) is True
+    assert tile_filter.tile_intersects(10, 500, 500) is True
+
+
+def test_tile_filter_zoom_no_filter_with_poly():
+    """Test zoom filtering with polygon filtering."""
+    poly_content = """test_area
+test_polygon
+    0.0    0.0
+    1.0    0.0
+    1.0    1.0
+    0.0    1.0
+    0.0    0.0
+END
+END
+"""
+
+    with TemporaryDirectory() as tmpdir:
+        poly_path = Path(tmpdir) / "test.poly"
+        poly_path.write_text(poly_content)
+
+        # Mock the TileFilter by directly setting up the geometry
+        tile_filter = TileFilter("", max_zoom_no_filter=5)
+        polygon = parse_poly_file(poly_path)
+        tile_filter.unified_geometry = polygon
+        tile_filter.polygon_count = 1
+
+        # Tiles at zoom 0-5 should be included regardless of poly
+        assert tile_filter.tile_intersects(0, 0, 0) is True
+        assert tile_filter.tile_intersects(5, 5, 5) is True
+
+        # Tiles at zoom > 5 should be filtered by polygon
+        # Tile at zoom 10, column 512, row 512 is approximately at (0, 0)
+        # which should be inside the poly
+        assert tile_filter.tile_intersects(10, 512, 512) is True
+        # Tile far away should not intersect
+        assert tile_filter.tile_intersects(10, 0, 0) is False

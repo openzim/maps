@@ -155,6 +155,14 @@ def prepare_context(raw_args: list[str], tmpdir: str) -> None:
         dest="include_poly_urls",
     )
 
+    parser.add_argument(
+        "--include_up_to_zoom",
+        type=int,
+        help="Include all tiles up to this zoom level, ignoring any poly filtering. "
+        f"Default: {Context.include_up_to_zoom}",
+        dest="include_up_to_zoom",
+    )
+
     args = parser.parse_args(raw_args)
 
     # Ignore unset values so they do not override the default specified in Context

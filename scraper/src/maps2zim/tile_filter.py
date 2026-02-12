@@ -149,11 +149,13 @@ def tile_to_bbox(z: int, x: int, y: int) -> tuple[float, float, float, float]:
 class TileFilter:
     """Filter tiles based on geographic regions from .poly files."""
 
-    def __init__(self, poly_urls: str) -> None:
+    def __init__(self, poly_urls: str, max_zoom_no_filter: int | None = None) -> None:
         """Initialize TileFilter from comma-separated .poly file URLs.
 
         Args:
             poly_urls: Comma-separated URLs of .poly files to download and use
+            max_zoom_no_filter: Include all tiles up to this zoom level,
+                ignoring poly filtering. None means filter all zooms.
 
         Raises:
             ValueError: If no valid polygons are found
@@ -161,6 +163,7 @@ class TileFilter:
         self.polygons: list[Polygon] = []
         self.unified_geometry: Polygon | None = None
         self.polygon_count = 0
+        self.max_zoom_no_filter = max_zoom_no_filter
 
         if not poly_urls or not poly_urls.strip():
             return
@@ -199,10 +202,14 @@ class TileFilter:
             y: Tile row
 
         Returns:
-            True if tile intersects with any polygon, False otherwise
+            True if tile should be included, False otherwise
         """
+        # Check if this zoom level should be included without filtering
+        if self.max_zoom_no_filter is not None and z <= self.max_zoom_no_filter:
+            return True
+
+        # If no polygon filtering is active, include the tile
         if self.unified_geometry is None:
-            # No filtering active
             return True
 
         # Get tile bounding box

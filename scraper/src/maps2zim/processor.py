@@ -257,15 +257,35 @@ class Processor:
         context.current_thread_workitem = "tilejson"
         self._write_tilejson(creator)
 
-        # Initialize tile filter if poly files are specified
+        # Initialize tile filter if poly files or zoom filtering is specified
         tile_filter = None
-        if context.include_poly_urls:
+        if context.include_poly_urls or context.include_up_to_zoom is not None:
             context.current_thread_workitem = "loading poly files"
-            logger.info("  Downloading and loading .poly file(s) for filtering")
-            tile_filter = TileFilter(context.include_poly_urls)
-            logger.info(
-                f"  Loaded {tile_filter.polygon_count} polygon(s) for filtering"
+
+            # Validate include_up_to_zoom if specified
+            if context.include_up_to_zoom is not None:
+                max_zoom = self._get_mbtiles_maxzoom()
+                if context.include_up_to_zoom >= max_zoom:
+                    raise ValueError(
+                        f"--include_up_to_zoom ({context.include_up_to_zoom}) "
+                        f"must be less than the maximum zoom in mbtiles ({max_zoom})"
+                    )
+
+            if context.include_poly_urls:
+                logger.info("  Downloading and loading .poly file(s) for filtering")
+            tile_filter = TileFilter(
+                context.include_poly_urls or "",
+                max_zoom_no_filter=context.include_up_to_zoom,
             )
+            if context.include_poly_urls:
+                logger.info(
+                    f"  Loaded {tile_filter.polygon_count} polygon(s) for filtering"
+                )
+            if context.include_up_to_zoom is not None:
+                logger.info(
+                    f"  Including all tiles up to zoom "
+                    f"level {context.include_up_to_zoom}"
+                )
 
         # Count items for progress reporting
         dedupl_count, tile_count = self._count_mbtiles_items(tile_filter)
@@ -660,13 +680,8 @@ class Processor:
         style_obj["layers"] = filtered_layers
         return style_obj
 
-    def _count_mbtiles_items(self, tile_filter: Any = None) -> tuple[int, int]:
+    def _count_mbtiles_items(self) -> tuple[int, int]:
         """Count total dedupl and tile items in mbtiles database.
-
-        Optionally filters based on tile regions if tile_filter is provided.
-
-        Args:
-            tile_filter: Optional TileFilter object for geographic filtering
 
         Returns:
             Tuple of (dedupl_count, tile_count)
@@ -676,35 +691,33 @@ class Processor:
         c = conn.cursor()
 
         try:
-            if tile_filter:
-                # Count only tiles that intersect with filter regions
-                c.execute(
-                    "select zoom_level, tile_column, tile_row, tile_data_id "
-                    "from tiles_shallow"
-                )
-                filtered_dedup_ids: set[int] = set()
-                tile_count = 0
-
-                for row in c:
-                    z = row[0]
-                    x = row[1]
-                    y = self._flip_y(z, row[2])
-                    dedup_id = row[3]
-
-                    if tile_filter.tile_intersects(z, x, y):
-                        tile_count += 1
-                        filtered_dedup_ids.add(dedup_id)
-
-                dedupl_count = len(filtered_dedup_ids)
-            else:
-                dedupl_count = c.execute("select count(*) from tiles_data").fetchone()[
-                    0
-                ]
-                tile_count = c.execute("select count(*) from tiles_shallow").fetchone()[
-                    0
-                ]
-
+            dedupl_count = c.execute("select count(*) from tiles_data").fetchone()[
+                0
+            ]
+            tile_count = c.execute("select count(*) from tiles_shallow").fetchone()[
+                0
+            ]
             return dedupl_count, tile_count
+        finally:
+            conn.close()
+
+    def _get_mbtiles_maxzoom(self) -> int:
+        """Get the maximum zoom level from mbtiles metadata.
+
+        Returns:
+            Maximum zoom level (default 14 if not found)
+        """
+        mbtiles_path = context.assets_folder / f"{context.area}.mbtiles"
+        if not mbtiles_path.exists():
+            return 14  # Default if file doesn't exist yet
+
+        conn = sqlite3.connect(mbtiles_path)
+        c = conn.cursor()
+        try:
+            metadata = dict(c.execute("select name, value from metadata").fetchall())
+            if "maxzoom" in metadata:
+                return int(metadata["maxzoom"])
+            return 14  # Default
         finally:
             conn.close()
 
