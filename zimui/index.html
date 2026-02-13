@@ -12,7 +12,20 @@
   </head>
   <body>
     <h2 id="title">Maps2Zim</h2>
-    <div id="map"></div>
+    <div id="map">
+      <button id="coordsButton" class="coords-button" title="Show map coordinates and zoom level">
+        📍
+      </button>
+      <div id="coordsPopover" class="coords-popover">
+        <div class="coords-content">
+          <p class="coords">
+            Lat: <span id="latitude">0.00</span><br />
+            Lon: <span id="longitude">0.00</span><br />
+            Zoom:</strong> <span id="zoomLevel">11</span>
+          </p>
+        </div>
+      </div>
+    </div>
     <script type="module" src="./main.js"></script>
   </body>
 </html>

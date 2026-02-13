@@ -33,8 +33,8 @@ const toAbsolute = (url) => {
 
 const map = new Map({
   container: "map",
-  center: [7.420573260138943, 43.73687264886423],
-  zoom: 11,
+  center: [9, 42],
+  zoom: 7,
   transformRequest: (url) => {
     return { url: toAbsolute(url) };
   },
@@ -69,3 +69,56 @@ map.setStyle("./styles/liberty", {
     };
   },
 });
+
+// Coordinates and zoom display functionality
+const coordsButton = document.getElementById("coordsButton");
+const coordsPopover = document.getElementById("coordsPopover");
+const zoomLevel = document.getElementById("zoomLevel");
+const latitude = document.getElementById("latitude");
+const longitude = document.getElementById("longitude");
+
+// Toggle popover visibility
+coordsButton.addEventListener("click", () => {
+  coordsPopover.classList.toggle("visible");
+});
+
+// Close popover when clicking outside
+document.addEventListener("click", (event) => {
+  if (
+    !coordsButton.contains(event.target) &&
+    !coordsPopover.contains(event.target)
+  ) {
+    coordsPopover.classList.remove("visible");
+  }
+});
+
+// Debounce function for updating coordinates
+const debounce = (func, wait) => {
+  let timeout;
+  return function executedFunction(...args) {
+    const later = () => {
+      window.clearTimeout(timeout);
+      func(...args);
+    };
+    window.clearTimeout(timeout);
+    timeout = window.setTimeout(later, wait);
+  };
+};
+
+// Update coordinates display
+const updateCoordinates = () => {
+  const center = map.getCenter();
+  zoomLevel.textContent = map.getZoom().toFixed(2);
+  latitude.textContent = center.lat.toFixed(6);
+  longitude.textContent = center.lng.toFixed(6);
+};
+
+// Debounced update function (100ms delay)
+const debouncedUpdateCoordinates = debounce(updateCoordinates, 100);
+
+// Listen to map move and zoom events
+map.on("move", debouncedUpdateCoordinates);
+map.on("zoom", debouncedUpdateCoordinates);
+
+// Initial update
+updateCoordinates();

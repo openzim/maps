@@ -12,3 +12,82 @@ body {
 #title {
   margin: 1rem;
 }
+
+#map {
+  position: relative;
+}
+
+.coords-button {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  width: 25px;
+  height: 25px;
+  border-radius: 50%;
+  background-color: white;
+  border: 1px solid #ccc;
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+  transition: all 0.2s ease;
+}
+
+.coords-button:hover {
+  background-color: #f5f5f5;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.coords-button:active {
+  transform: scale(0.95);
+}
+
+.coords-popover {
+  position: absolute;
+  top: 40px;
+  left: 10px;
+  background-color: #f9f9f9;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  padding: 6px;
+  z-index: 10;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  display: none;
+  min-width: 105px;
+}
+
+.coords-popover.visible {
+  display: block;
+}
+
+.coords-content {
+  font-size: 12px;
+  color: #333;
+}
+
+.coords-content p {
+  margin: 4px 0;
+}
+
+.coords-content strong {
+  font-weight: 600;
+}
+
+.coords {
+  font-family: monospace;
+  font-size: 11px;
+  padding: 4px;
+  border-radius: 4px;
+  margin: 4px 0 !important;
+}
+
+/* Hide button and popover on mobile phones (< 768px) */
+@media (max-width: 767px) {
+  .coords-button,
+  .coords-popover {
+    display: none !important;
+  }
+}
