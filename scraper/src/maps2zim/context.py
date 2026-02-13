@@ -98,6 +98,13 @@ class Context:
     # planet
     area: str = "monaco"
 
+    # Comma-separated URLs of .poly files defining regions to include tiles from
+    include_poly_urls: str | None = None
+
+    # Include all tiles up to this zoom level, ignoring poly filtering
+    # Default is 6 (only 4096 tiles globally)
+    include_up_to_zoom: int | None = 6
+
     @classmethod
     def setup(cls, **kwargs: Any):
         new_instance = cls(**kwargs)
