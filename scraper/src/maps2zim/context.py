@@ -94,9 +94,9 @@ class Context:
     # Maps specific arguments
     # ------------------------------
 
-    # By default, download only monaco area ; specify planet to download the whole
-    # planet
-    area: str = "monaco"
+    # By default, download only planet area ; specify monaco to download a smaller test
+    # dataset (useful only for testing)
+    area: str = "planet"
 
     # Comma-separated URLs of .poly files defining regions to include tiles from
     include_poly_urls: str | None = None
@@ -104,6 +104,9 @@ class Context:
     # Include all tiles up to this zoom level, ignoring poly filtering
     # Default is 6 (only 4096 tiles globally)
     include_up_to_zoom: int | None = 6
+
+    # Default map view: (longitude, latitude, zoom)
+    default_view: tuple[float, float, float] | None = None
 
     @classmethod
     def setup(cls, **kwargs: Any):

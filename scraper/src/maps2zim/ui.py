@@ -10,3 +10,6 @@ class CamelModel(BaseModel):
 
 class ConfigModel(CamelModel):
     secondary_color: str
+    zim_name: str | None = None
+    center: list[float] | None = None
+    zoom: float | None = None

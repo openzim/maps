@@ -11,8 +11,44 @@
     <title>Maps2ZIM</title>
   </head>
   <body>
-    <h2 id="title">Maps2Zim</h2>
-    <div id="map"></div>
+    <div id="map">
+      <div class="button-container">
+        <select
+          id="styleSelector"
+          class="style-selector"
+          title="Switch map style"
+        >
+          <option value="bright">Bright</option>
+          <option value="liberty">Liberty</option>
+          <option value="fiord">Fiord</option>
+          <option value="positron">Positron</option>
+          <option value="dark">Dark</option>
+        </select>
+        <button
+          id="resetButton"
+          class="reset-button"
+          title="Reset to default center and zoom"
+        >
+          🏠
+        </button>
+        <button
+          id="coordsButton"
+          class="coords-button"
+          title="Show map coordinates and zoom level"
+        >
+          📍
+        </button>
+      </div>
+      <div id="coordsPopover" class="coords-popover">
+        <div class="coords-content">
+          <p class="coords">
+            Lat: <span id="latitude">0.00</span><br />
+            Lon: <span id="longitude">0.00</span><br />
+            Zoom: <span id="zoomLevel">11</span>
+          </p>
+        </div>
+      </div>
+    </div>
     <script type="module" src="./main.js"></script>
   </body>
 </html>
