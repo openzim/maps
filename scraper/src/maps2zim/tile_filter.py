@@ -5,9 +5,9 @@ from pathlib import Path
 
 from shapely.geometry import Polygon
 from shapely.ops import unary_union
+from zimscraperlib.download import save_large_file
 
 from maps2zim.context import Context
-from maps2zim.download import stream_file
 
 context = Context.get()
 logger = context.logger
@@ -35,7 +35,7 @@ def download_poly_file(url: str, dest_folder: Path) -> Path:
     filepath = dest_folder / filename
 
     logger.debug(f"Downloading .poly file from {url}")
-    stream_file(url, fpath=filepath)
+    save_large_file(url, fpath=filepath)
     logger.debug(f"Downloaded .poly file to {filepath}")
 
     return filepath
