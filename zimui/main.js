@@ -40,6 +40,13 @@ const toAbsolute = (url) => {
   let hasConfigDefaults = false;
   let zimName = null;
   let storageKey = null;
+  let currentStyle = "bright";
+
+  // Load saved style from localStorage
+  const savedStyle = window.localStorage.getItem("openzim_maps_style");
+  if (savedStyle) {
+    currentStyle = savedStyle;
+  }
 
   try {
     const response = await axios.get(toAbsolute("./content/config.json"));
@@ -93,56 +100,76 @@ const toAbsolute = (url) => {
     },
   });
 
-  map.setStyle("./styles/liberty", {
-    validate: false,
-    transformStyle: (previousStyle, nextStyle) => {
-      return {
-        ...nextStyle,
-        glyphs: toAbsolute(nextStyle.glyphs),
-        sprite: toAbsolute(nextStyle.sprite),
-        sources: Object.fromEntries(
-          Object.entries(nextStyle.sources || {}).map(([key, source]) => {
-            const updatedSource = { ...source };
+  const setMapStyle = (styleName) => {
+    map.setStyle(`./styles/${styleName}`, {
+      validate: false,
+      transformStyle: (previousStyle, nextStyle) => {
+        return {
+          ...nextStyle,
+          glyphs: toAbsolute(nextStyle.glyphs),
+          sprite: toAbsolute(nextStyle.sprite),
+          sources: Object.fromEntries(
+            Object.entries(nextStyle.sources || {}).map(([key, source]) => {
+              const updatedSource = { ...source };
 
-            if (source.url) {
-              updatedSource.url = toAbsolute(source.url);
-            }
+              if (source.url) {
+                updatedSource.url = toAbsolute(source.url);
+              }
 
-            if (source.tiles && Array.isArray(source.tiles)) {
-              updatedSource.tiles = source.tiles.map(toAbsolute);
-            }
+              if (source.tiles && Array.isArray(source.tiles)) {
+                updatedSource.tiles = source.tiles.map(toAbsolute);
+              }
 
-            if (source.data && typeof source.data === "string") {
-              updatedSource.data = toAbsolute(source.data);
-            }
+              if (source.data && typeof source.data === "string") {
+                updatedSource.data = toAbsolute(source.data);
+              }
 
-            return [key, updatedSource];
-          }),
-        ),
-      };
-    },
-  });
+              return [key, updatedSource];
+            }),
+          ),
+        };
+      },
+    });
+  };
 
-  // Coordinates and zoom display functionality
+  setMapStyle(currentStyle);
+
+  // UI elements
+  const buttonContainer = document.querySelector(".button-container");
   const resetButton = document.getElementById("resetButton");
+  const styleSelector = document.getElementById("styleSelector");
   const coordsButton = document.getElementById("coordsButton");
   const coordsPopover = document.getElementById("coordsPopover");
   const zoomLevel = document.getElementById("zoomLevel");
   const latitude = document.getElementById("latitude");
   const longitude = document.getElementById("longitude");
 
-  // Show reset button only after map loads and if config has defaults
+  // Set initial style selector value
+  styleSelector.value = currentStyle;
+
+  // Show button container and reset button only after map loads if config has defaults
   map.on("load", () => {
+    buttonContainer.classList.add("visible");
     if (hasConfigDefaults) {
       resetButton.style.display = "flex";
-      resetButton.addEventListener("click", () => {
-        map.flyTo({
-          center: defaultCenter,
-          zoom: defaultZoom,
-          duration: 1000,
-        });
-      });
     }
+  });
+
+  // Reset button functionality
+  resetButton.addEventListener("click", () => {
+    map.flyTo({
+      center: defaultCenter,
+      zoom: defaultZoom,
+      duration: 1000,
+    });
+  });
+
+  // Style selector change handler
+  styleSelector.addEventListener("change", (event) => {
+    const newStyle = event.target.value;
+    currentStyle = newStyle;
+    setMapStyle(currentStyle);
+    window.localStorage.setItem("openzim_maps_style", currentStyle);
   });
 
   // Toggle popover visibility
