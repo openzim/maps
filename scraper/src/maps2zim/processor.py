@@ -11,6 +11,7 @@ from typing import Any
 
 from pydantic import BaseModel
 from schedule import every, run_pending
+from zimscraperlib.download import save_large_file
 from zimscraperlib.image import convert_image, resize_image
 from zimscraperlib.image.conversion import convert_svg2png
 from zimscraperlib.image.probing import format_for
@@ -464,7 +465,7 @@ class Processor:
         context.assets_folder.mkdir(parents=True, exist_ok=True)
 
         logger.info("  Downloading fonts from OpenFreeMap")
-        stream_file(
+        save_large_file(
             "https://assets.openfreemap.com/fonts/ofm.tar.gz",
             fpath=fonts_tar_gz_path,
         )
@@ -519,7 +520,7 @@ class Processor:
         context.assets_folder.mkdir(parents=True, exist_ok=True)
 
         logger.info("  Downloading natural_earth from OpenFreeMap")
-        stream_file(
+        save_large_file(
             "http://assets.openfreemap.com/natural_earth/ofm.tar.gz",
             fpath=natural_earth_tar_gz_path,
         )
@@ -572,7 +573,7 @@ class Processor:
         context.assets_folder.mkdir(parents=True, exist_ok=True)
 
         logger.info("  Downloading sprites from OpenFreeMap")
-        stream_file(
+        save_large_file(
             "https://assets.openfreemap.com/sprites/ofm_f384.tar.gz",
             fpath=sprites_tar_gz_path,
         )
@@ -624,7 +625,7 @@ class Processor:
         context.assets_folder.mkdir(parents=True, exist_ok=True)
 
         logger.info("  Downloading styles from OpenFreeMap")
-        stream_file(
+        save_large_file(
             "https://assets.openfreemap.com/styles/ofm.tar.gz",
             fpath=styles_tar_gz_path,
         )
@@ -913,7 +914,7 @@ class Processor:
         mbtiles_url = f"https://btrfs.openfreemap.com/{mbtiles_path_in_list}"
 
         logger.info(f"  Downloading mbtiles from {mbtiles_url}")
-        stream_file(
+        save_large_file(
             mbtiles_url,
             fpath=mbtiles_path,
         )
