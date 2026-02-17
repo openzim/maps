@@ -45,7 +45,7 @@ const toAbsolute = (url) => {
     const response = await axios.get(toAbsolute("./content/config.json"));
     const config = response.data;
 
-    console.log(config)
+    console.log(config);
     // Get zim_name for localStorage key
     if (config.zimName) {
       zimName = config.zimName;
