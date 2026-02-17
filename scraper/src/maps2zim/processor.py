@@ -208,6 +208,7 @@ class Processor:
             "content/config.json",
             content=ConfigModel(
                 secondary_color=self.zim_config.secondary_color,
+                zim_name=self.formatted_config.name,
                 center=(
                     [context.default_view[0], context.default_view[1]]
                     if context.default_view

@@ -14,10 +14,18 @@ body {
   position: relative;
 }
 
-.coords-button {
+.button-container {
   position: absolute;
   top: 10px;
   left: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 10;
+}
+
+.reset-button,
+.coords-button {
   width: 25px;
   height: 25px;
   border-radius: 50%;
@@ -28,23 +36,28 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 10;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
   transition: all 0.2s ease;
 }
 
+.reset-button {
+  display: none;
+}
+
+.reset-button:hover,
 .coords-button:hover {
   background-color: #f5f5f5;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
+.reset-button:active,
 .coords-button:active {
   transform: scale(0.95);
 }
 
 .coords-popover {
   position: absolute;
-  top: 40px;
+  top: 75px;
   left: 10px;
   background-color: #f9f9f9;
   border: 1px solid #ccc;
@@ -81,9 +94,9 @@ body {
   margin: 4px 0 !important;
 }
 
-/* Hide button and popover on mobile phones (< 768px) */
+/* Hide coords buttons and popover on mobile phones (< 768px) */
 @media (max-width: 767px) {
-  .coords-button,
+  .coordsButton,
   .coords-popover {
     display: none !important;
   }
