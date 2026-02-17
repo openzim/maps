@@ -16,6 +16,33 @@ from maps2zim.constants import (
 from maps2zim.context import MAPS_TMP, Context
 
 
+def parse_default_view(value: str) -> tuple[float, float, float]:
+    """Parse --default-view argument as longitude,latitude,zoom.
+
+    Args:
+        value: comma-separated string of 3 floats
+
+    Returns:
+        Tuple of (longitude, latitude, zoom) as floats
+
+    Raises:
+        argparse.ArgumentTypeError: if format is invalid
+    """
+    parts = value.split(",")
+    if len(parts) != 3:  # noqa: PLR2004
+        raise argparse.ArgumentTypeError(
+            f"--default-view requires exactly 3 comma-separated values "
+            f"(longitude,latitude,zoom), got {len(parts)}"
+        )
+    try:
+        lon, lat, zoom = float(parts[0]), float(parts[1]), float(parts[2])
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            f"--default-view values must all be floats, got: {value!r}"
+        ) from None
+    return (lon, lat, zoom)
+
+
 def prepare_context(raw_args: list[str], tmpdir: str) -> None:
     """Initialize scraper context from command line arguments"""
 
@@ -161,6 +188,14 @@ def prepare_context(raw_args: list[str], tmpdir: str) -> None:
         help="Include all tiles up to this zoom level, ignoring any poly filtering. "
         f"Default: {Context.include_up_to_zoom}",
         dest="include_up_to_zoom",
+    )
+
+    parser.add_argument(
+        "--default-view",
+        type=parse_default_view,
+        help="Default map view as longitude,latitude,zoom (e.g. 7.416,43.731,12). "
+        "Sets the initial center and zoom level of the map when UI loads.",
+        dest="default_view",
     )
 
     args = parser.parse_args(raw_args)

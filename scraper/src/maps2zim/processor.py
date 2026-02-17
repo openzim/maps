@@ -74,6 +74,15 @@ class Processor:
     def _run_internal(self) -> Path:
         logger.setLevel(level=logging.DEBUG if context.debug else logging.INFO)
 
+        if (
+            context.area != "planet" or context.include_poly_urls
+        ) and not context.default_view:
+            logger.warning(
+                "You should pass --default-view arg when using a custom --area or "
+                "--include_poly_urls value(s), so that default map displayed in the UI "
+                "is nice."
+            )
+
         self.zim_config = ZimConfig(
             file_name=context.file_name,
             name=context.name,
@@ -198,8 +207,14 @@ class Processor:
         creator.add_item_for(
             "content/config.json",
             content=ConfigModel(
-                secondary_color=self.zim_config.secondary_color
-            ).model_dump_json(by_alias=True),
+                secondary_color=self.zim_config.secondary_color,
+                center=(
+                    [context.default_view[0], context.default_view[1]]
+                    if context.default_view
+                    else None
+                ),
+                zoom=context.default_view[2] if context.default_view else None,
+            ).model_dump_json(by_alias=True, exclude_none=True),
         )
 
         count_zimui_files = len(list(context.zimui_dist.rglob("*")))
