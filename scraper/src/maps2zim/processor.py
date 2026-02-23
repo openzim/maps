@@ -39,7 +39,7 @@ context = Context.get()
 logger = context.logger
 
 LOG_EVERY_SECONDS = 60
-
+GEONAMES_REGION = "allCountries"  # Customize if needed when developing
 
 class FilteringResult(BaseModel):
     dedup_ids: set[int] = set()
@@ -607,14 +607,13 @@ class Processor:
         extracts the TSV file, and removes the ZIP file.
         The extracted TSV is cached in the assets folder for processing.
         """
-        geonames_region = "allCountries"  # Customize if needed when developing
-        geonames_zip_path = context.assets_folder / f"{geonames_region}.zip"
-        geonames_txt_path = context.assets_folder / f"{geonames_region}.txt"
+        geonames_zip_path = context.assets_folder / f"{GEONAMES_REGION}.zip"
+        geonames_txt_path = context.assets_folder / f"{GEONAMES_REGION}.txt"
 
         # If extracted TSV file already exists, we're done
         if geonames_txt_path.exists():
             logger.info(
-                f"  using geonames {geonames_region} TSV already available at "
+                f"  using geonames {GEONAMES_REGION} TSV already available at "
                 f"{geonames_txt_path}"
             )
             return
@@ -622,18 +621,18 @@ class Processor:
         # Create assets folder if it doesn't exist
         context.assets_folder.mkdir(parents=True, exist_ok=True)
 
-        logger.info(f"  Downloading geonames {geonames_region} from geonames.org")
+        logger.info(f"  Downloading geonames {GEONAMES_REGION} from geonames.org")
         geonames_url = (
-            f"https://download.geonames.org/export/dump/{geonames_region}.zip"
+            f"https://download.geonames.org/export/dump/{GEONAMES_REGION}.zip"
         )
         save_large_file(geonames_url, fpath=geonames_zip_path)
-        logger.info(f"  geonames {geonames_region} ZIP saved to {geonames_zip_path}")
+        logger.info(f"  geonames {GEONAMES_REGION} ZIP saved to {geonames_zip_path}")
 
         # Extract TSV file from ZIP
-        logger.info(f"  Extracting {geonames_region}.txt from ZIP")
+        logger.info(f"  Extracting {GEONAMES_REGION}.txt from ZIP")
         with zipfile.ZipFile(geonames_zip_path, "r") as zip_ref:
             # Extract the TSV file (named {region}.txt)
-            txt_file_name = f"{geonames_region}.txt"
+            txt_file_name = f"{GEONAMES_REGION}.txt"
             if txt_file_name not in zip_ref.namelist():
                 raise OSError(
                     f"Could not find {txt_file_name} in geonames ZIP at "
@@ -1398,14 +1397,13 @@ class Processor:
             Dictionary mapping place names to lists of SearchPlace objects.
             Returns empty dict if data file is not available.
         """
-        geonames_region = "FR"  # Must match _fetch_geonames_zip
-        geonames_txt_path = context.assets_folder / f"{geonames_region}.txt"
+        geonames_txt_path = context.assets_folder / f"{GEONAMES_REGION}.txt"
 
         if not geonames_txt_path.exists():
             logger.info("  Geonames data not available, skipping")
             return {}
 
-        logger.info(f"  Processing geonames {geonames_region} entries")
+        logger.info(f"  Processing geonames {GEONAMES_REGION} entries")
 
         # ADM feature codes to zoom level mapping
         adm_zoom_map = {
