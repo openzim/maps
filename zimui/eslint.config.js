@@ -14,6 +14,7 @@ export default [
         document: "readonly",
         navigator: "readonly",
         console: "readonly",
+        URLSearchParams: "readonly",
       },
     },
     rules: js.configs.recommended.rules,
