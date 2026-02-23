@@ -607,7 +607,7 @@ class Processor:
         extracts the TSV file, and removes the ZIP file.
         The extracted TSV is cached in the assets folder for processing.
         """
-        geonames_region = "FR"  # Default region for testing; can be made configurable
+        geonames_region = "allCountries"  # Customize if needed when developing
         geonames_zip_path = context.assets_folder / f"{geonames_region}.zip"
         geonames_txt_path = context.assets_folder / f"{geonames_region}.txt"
 
