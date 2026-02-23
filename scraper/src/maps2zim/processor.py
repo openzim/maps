@@ -41,6 +41,7 @@ logger = context.logger
 LOG_EVERY_SECONDS = 60
 GEONAMES_REGION = "allCountries"  # Customize if needed when developing
 
+
 class FilteringResult(BaseModel):
     dedup_ids: set[int] = set()
     redirects: list[tuple[str, str]] = []

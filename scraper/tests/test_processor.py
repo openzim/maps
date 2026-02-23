@@ -6,7 +6,7 @@ from tempfile import TemporaryDirectory
 from shapely.geometry import Polygon
 
 from maps2zim.context import Context
-from maps2zim.processor import Processor, SearchPlace
+from maps2zim.processor import GEONAMES_REGION, Processor, SearchPlace
 from maps2zim.tile_filter import TileFilter
 
 
@@ -394,7 +394,7 @@ def test_parse_geonames_with_tile_filter():
         tmpdir_path = Path(tmpdir)
 
         # Write geonames file
-        geonames_path = tmpdir_path / "FR.txt"
+        geonames_path = tmpdir_path / f"{GEONAMES_REGION}.txt"
         geonames_path.write_text(geonames_content, encoding="utf-8")
 
         # Setup context with temp assets folder
@@ -458,7 +458,7 @@ def test_parse_geonames_without_tile_filter():
         tmpdir_path = Path(tmpdir)
 
         # Write geonames file
-        geonames_path = tmpdir_path / "FR.txt"
+        geonames_path = tmpdir_path / f"{GEONAMES_REGION}.txt"
         geonames_path.write_text(geonames_content, encoding="utf-8")
 
         # Setup context with temp assets folder
