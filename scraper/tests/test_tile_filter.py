@@ -173,3 +173,44 @@ END
         assert tile_filter.tile_intersects(10, 512, 512) is True
         # Tile far away should not intersect
         assert tile_filter.tile_intersects(10, 0, 0) is False
+
+
+def test_tile_filter_contains_point():
+    """Test point-in-polygon filtering."""
+    poly_content = """test_area
+test_polygon
+    0.0    0.0
+    1.0    0.0
+    1.0    1.0
+    0.0    1.0
+    0.0    0.0
+END
+END
+"""
+
+    with TemporaryDirectory() as tmpdir:
+        poly_path = Path(tmpdir) / "test.poly"
+        poly_path.write_text(poly_content)
+
+        # Create filter and inject polygon (avoid downloading)
+        tile_filter = TileFilter("")
+        polygon = parse_poly_file(poly_path)
+        tile_filter.unified_geometry = polygon
+        tile_filter.polygon_count = 1
+
+        # Test points inside the polygon
+        assert tile_filter.contains_point(0.5, 0.5) is True
+        assert tile_filter.contains_point(0.25, 0.75) is True
+        assert tile_filter.contains_point(0.1, 0.1) is True
+
+        # Test points outside the polygon
+        assert tile_filter.contains_point(-0.5, 0.5) is False
+        assert tile_filter.contains_point(1.5, 0.5) is False
+        assert tile_filter.contains_point(0.5, -0.5) is False
+        assert tile_filter.contains_point(2.0, 2.0) is False
+
+        # Test with no geometry set (should always return True)
+        tile_filter_no_geo = TileFilter("")
+        assert tile_filter_no_geo.contains_point(0.5, 0.5) is True
+        assert tile_filter_no_geo.contains_point(-180.0, -90.0) is True
+        assert tile_filter_no_geo.contains_point(180.0, 90.0) is True

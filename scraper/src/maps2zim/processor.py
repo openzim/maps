@@ -5,6 +5,8 @@ import logging
 import sqlite3
 import tarfile
 import time
+import zipfile
+from importlib import resources
 from io import BytesIO
 from pathlib import Path
 from typing import Any
@@ -43,6 +45,24 @@ class FilteringResult(BaseModel):
     dedup_ids: set[int] = set()
     redirects: list[tuple[str, str]] = []
     filtered_tile_count: int = 0
+
+
+class SearchPlace(BaseModel):
+    """A single place for search indexing."""
+
+    geoname_id: str
+    latitude: float
+    longitude: float
+    zoom: int
+    label: str
+    feature_code: str
+    country_code: str
+
+
+class SearchEntry(BaseModel):
+    """Entry in places dictionary mapping name to list of places."""
+
+    places: list[SearchPlace]
 
 
 class Processor:
@@ -282,7 +302,7 @@ class Processor:
         self._write_tilejson(creator)
 
         # Initialize tile filter if poly files or zoom filtering is specified
-        tile_filter = None
+        tile_filter: TileFilter | None = None
         if context.include_poly_urls or context.include_up_to_zoom is not None:
             context.current_thread_workitem = "loading poly files"
 
@@ -310,6 +330,32 @@ class Processor:
                     f"  Including all tiles up to zoom "
                     f"level {context.include_up_to_zoom}"
                 )
+
+        context.current_thread_workitem = "download places data"
+        self._fetch_geonames_zip()
+        self._fetch_hierarchy_zip()
+        self._fetch_country_info()
+
+        context.current_thread_workitem = "process places data"
+        places_dict = self._parse_geonames(tile_filter=tile_filter)
+        # Build reverse mapping for hierarchy traversal
+        id_to_place = {
+            p.geoname_id: p for places in places_dict.values() for p in places
+        }
+        # Parse hierarchy and country info, then compute disambiguating labels
+        child_to_parent = self._parse_hierarchy()
+        iso_to_country = self._parse_country_info()
+        if child_to_parent:
+            self._compute_discriminating_labels(
+                places_dict, id_to_place, child_to_parent, iso_to_country
+            )
+        self._write_places(creator, places_dict)
+
+        # Free memory
+        del places_dict
+        del id_to_place
+        del child_to_parent
+        del iso_to_country
 
         # Count items for progress reporting (just totals, no filtering)
         dedupl_count, tile_count = self._count_mbtiles_items()
@@ -553,6 +599,160 @@ class Processor:
                         )
 
         logger.info("  Natural_earth added to ZIM")
+
+    def _fetch_geonames_zip(self):
+        """Download and extract geonames data from ZIP if not already cached.
+
+        Downloads from https://download.geonames.org/export/dump/{region}.zip,
+        extracts the TSV file, and removes the ZIP file.
+        The extracted TSV is cached in the assets folder for processing.
+        """
+        geonames_region = "FR"  # Default region for testing; can be made configurable
+        geonames_zip_path = context.assets_folder / f"{geonames_region}.zip"
+        geonames_txt_path = context.assets_folder / f"{geonames_region}.txt"
+
+        # If extracted TSV file already exists, we're done
+        if geonames_txt_path.exists():
+            logger.info(
+                f"  using geonames {geonames_region} TSV already available at "
+                f"{geonames_txt_path}"
+            )
+            return
+
+        # Create assets folder if it doesn't exist
+        context.assets_folder.mkdir(parents=True, exist_ok=True)
+
+        logger.info(f"  Downloading geonames {geonames_region} from geonames.org")
+        geonames_url = (
+            f"https://download.geonames.org/export/dump/{geonames_region}.zip"
+        )
+        save_large_file(geonames_url, fpath=geonames_zip_path)
+        logger.info(f"  geonames {geonames_region} ZIP saved to {geonames_zip_path}")
+
+        # Extract TSV file from ZIP
+        logger.info(f"  Extracting {geonames_region}.txt from ZIP")
+        with zipfile.ZipFile(geonames_zip_path, "r") as zip_ref:
+            # Extract the TSV file (named {region}.txt)
+            txt_file_name = f"{geonames_region}.txt"
+            if txt_file_name not in zip_ref.namelist():
+                raise OSError(
+                    f"Could not find {txt_file_name} in geonames ZIP at "
+                    f"{geonames_zip_path}"
+                )
+            zip_ref.extract(txt_file_name, context.assets_folder)
+
+        # Remove ZIP file to save space
+        geonames_zip_path.unlink()
+        logger.info(f"  Removed ZIP file, keeping extracted TSV at {geonames_txt_path}")
+
+    def _fetch_hierarchy_zip(self):
+        """Download and extract geonames hierarchy data from ZIP if not already cached.
+
+        Downloads from https://download.geonames.org/export/dump/hierarchy.zip,
+        extracts the hierarchy.txt file, and removes the ZIP file.
+        The extracted TSV is cached in the assets folder for processing.
+        """
+        hierarchy_zip_path = context.assets_folder / "hierarchy.zip"
+        hierarchy_txt_path = context.assets_folder / "hierarchy.txt"
+
+        # If extracted TSV file already exists, we're done
+        if hierarchy_txt_path.exists():
+            logger.info(
+                f"  using hierarchy TSV already available at {hierarchy_txt_path}"
+            )
+            return
+
+        # Create assets folder if it doesn't exist
+        context.assets_folder.mkdir(parents=True, exist_ok=True)
+
+        logger.info("  Downloading hierarchy from geonames.org")
+        hierarchy_url = "https://download.geonames.org/export/dump/hierarchy.zip"
+        save_large_file(hierarchy_url, fpath=hierarchy_zip_path)
+        logger.info(f"  hierarchy ZIP saved to {hierarchy_zip_path}")
+
+        # Extract TSV file from ZIP
+        logger.info("  Extracting hierarchy.txt from ZIP")
+        with zipfile.ZipFile(hierarchy_zip_path, "r") as zip_ref:
+            if "hierarchy.txt" not in zip_ref.namelist():
+                raise OSError(
+                    f"Could not find hierarchy.txt in ZIP at {hierarchy_zip_path}"
+                )
+            zip_ref.extract("hierarchy.txt", context.assets_folder)
+
+        # Remove ZIP file to save space
+        hierarchy_zip_path.unlink()
+        logger.info(
+            f"  Removed ZIP file, keeping extracted TSV at {hierarchy_txt_path}"
+        )
+
+    def _fetch_country_info(self):
+        """Download country info TSV from geonames if not already cached.
+
+        Downloads from https://download.geonames.org/export/dump/countryInfo.txt
+        and caches it in the assets folder.
+        """
+        country_info_path = context.assets_folder / "countryInfo.txt"
+
+        # If file already exists, we're done
+        if country_info_path.exists():
+            logger.info(
+                f"  using country info already available at {country_info_path}"
+            )
+            return
+
+        # Create assets folder if it doesn't exist
+        context.assets_folder.mkdir(parents=True, exist_ok=True)
+
+        logger.info("  Downloading country info from geonames.org")
+        save_large_file(
+            "https://download.geonames.org/export/dump/countryInfo.txt",
+            fpath=country_info_path,
+        )
+        logger.info(f"  country info saved to {country_info_path}")
+
+    @staticmethod
+    def _parse_country_info() -> dict[str, str]:
+        """Parse country info TSV and return ISO code to country name mapping.
+
+        Format of countryInfo.txt: ISO\t...\tCountry name (5th column)
+        Comments start with #
+
+        Returns:
+            Dictionary mapping ISO code to country name.
+        """
+        country_info_path = context.assets_folder / "countryInfo.txt"
+
+        if not country_info_path.exists():
+            logger.info("  Country info not available, skipping country name lookup")
+            return {}
+
+        logger.info("  Parsing country info file")
+
+        iso_to_country: dict[str, str] = {}
+
+        try:
+            with open(country_info_path, encoding="utf-8") as f:
+                for line in f:
+                    line_stripped = line.rstrip("\n")
+                    if not line_stripped or line_stripped.startswith("#"):
+                        continue
+
+                    parts = line_stripped.split("\t")
+                    if len(parts) < 5:  # noqa: PLR2004
+                        continue
+
+                    iso_code = parts[0]
+                    country_name = parts[4]
+
+                    if iso_code and country_name:
+                        iso_to_country[iso_code] = country_name
+
+            logger.debug(f"  Loaded {len(iso_to_country)} countries")
+            return iso_to_country
+
+        except Exception as e:
+            logger.error(f"  Error parsing country info: {e}")
+            return {}
 
     def _fetch_sprites_tar_gz(self):
         """Download sprites tar.gz from OpenFreeMap if not already cached.
@@ -1180,3 +1380,361 @@ class Processor:
             logger.info("  TileJSON file written to ZIM")
         finally:
             conn.close()
+
+    def _parse_geonames(
+        self, tile_filter: TileFilter | None = None
+    ) -> dict[str, list[SearchPlace]]:
+        """Parse geonames TSV file and return places grouped by name.
+
+        Reads the geonames TSV file and builds a dictionary mapping place names to
+        lists of places (filtered by ADM feature codes and optionally by geographic
+        region if tile_filter is provided).
+
+        Args:
+            tile_filter: Optional TileFilter for geographic filtering. If provided,
+                only places inside the filter regions are included.
+
+        Returns:
+            Dictionary mapping place names to lists of SearchPlace objects.
+            Returns empty dict if data file is not available.
+        """
+        geonames_region = "FR"  # Must match _fetch_geonames_zip
+        geonames_txt_path = context.assets_folder / f"{geonames_region}.txt"
+
+        if not geonames_txt_path.exists():
+            logger.info("  Geonames data not available, skipping")
+            return {}
+
+        logger.info(f"  Processing geonames {geonames_region} entries")
+
+        # ADM feature codes to zoom level mapping
+        adm_zoom_map = {
+            "ADM1": 6,
+            "ADM2": 8,
+            "ADM3": 10,
+            "ADM4": 12,
+        }
+
+        # Build dictionary: name -> list of places
+        places_dict: dict[str, list[SearchPlace]] = {}
+
+        try:
+            with open(geonames_txt_path, encoding="utf-8") as f:
+                for line in f:
+                    line_stripped = line.rstrip("\n")
+                    if not line_stripped or line_stripped.startswith("#"):
+                        continue
+
+                    parts = line_stripped.split("\t")
+                    if len(parts) < 9:  # noqa: PLR2004
+                        continue
+
+                    try:
+                        geoname_id = parts[0]
+                        name = parts[1]
+                        feature_code = (
+                            parts[7] if len(parts) > 7 else ""  # noqa: PLR2004
+                        )
+                        country_code = (
+                            parts[8] if len(parts) > 8 else ""  # noqa: PLR2004
+                        )
+
+                        # Only consider ADM entries
+                        if feature_code not in adm_zoom_map:
+                            continue
+
+                        latitude = float(parts[4])
+                        longitude = float(parts[5])
+                        zoom = adm_zoom_map[feature_code]
+
+                        # Filter by geographic region if tile filter is specified
+                        if tile_filter and not tile_filter.contains_point(
+                            longitude, latitude
+                        ):
+                            continue
+
+                        place = SearchPlace(
+                            geoname_id=geoname_id,
+                            latitude=latitude,
+                            longitude=longitude,
+                            zoom=zoom,
+                            label=name,
+                            feature_code=feature_code,
+                            country_code=country_code,
+                        )
+
+                        if name not in places_dict:
+                            places_dict[name] = []
+                        places_dict[name].append(place)
+
+                    except ValueError, IndexError:
+                        logger.debug("  Skipped malformed geonames line")
+                        continue
+
+            logger.info(
+                f"  Loaded {len(places_dict)} unique place names for a total of "
+                f"{sum([len(places) for places in places_dict.values()])} places"
+            )
+            return places_dict
+
+        except Exception as e:
+            logger.error(f"  Error processing geonames: {e}")
+            raise
+
+    @staticmethod
+    def _parse_hierarchy() -> dict[str, str]:
+        """Parse geonames hierarchy TSV and return child_id -> parent_id mapping.
+
+        Only includes entries where type == "ADM" to maintain administrative hierarchy.
+        Format of hierarchy.txt: parentId\tchildId\ttype
+
+        Returns:
+            Dictionary mapping child_id to parent_id.
+        """
+        hierarchy_txt_path = context.assets_folder / "hierarchy.txt"
+
+        if not hierarchy_txt_path.exists():
+            logger.info("  Hierarchy data not available, skipping hierarchical labels")
+            return {}
+
+        logger.info("  Parsing hierarchy file")
+
+        child_to_parent: dict[str, str] = {}
+
+        try:
+            with open(hierarchy_txt_path, encoding="utf-8") as f:
+                for line in f:
+                    line_stripped = line.rstrip("\n")
+                    if not line_stripped or line_stripped.startswith("#"):
+                        continue
+
+                    parts = line_stripped.split("\t")
+                    if len(parts) < 3:  # noqa: PLR2004
+                        continue
+
+                    # Only keep ADM type entries
+                    parent_id = parts[0]
+                    child_id = parts[1]
+                    rel_type = parts[2]
+
+                    if rel_type == "ADM":
+                        child_to_parent[child_id] = parent_id
+
+            logger.debug(f"  Loaded {len(child_to_parent)} ADM hierarchy entries")
+            return child_to_parent
+
+        except Exception as e:
+            logger.error(f"  Error parsing hierarchy: {e}")
+            return {}
+
+    @staticmethod
+    def _compute_discriminating_labels(
+        places_dict: dict[str, list[SearchPlace]],
+        id_to_place: dict[str, SearchPlace],
+        child_to_parent: dict[str, str],
+        iso_to_country: dict[str, str] | None = None,
+    ) -> None:
+        """Update place.label with full hierarchy for ambiguous entries.
+
+        For each group of places with the same name, includes the full ancestor
+        hierarchy to disambiguate them. Updates place.label in-place.
+
+        For places with unique names: no change
+        For places with duplicate names: "place_name, ADM3, ADM2, ADM1, Country" (all
+        ancestors + country)
+
+        Args:
+            places_dict: Dictionary mapping name to list of SearchPlace objects
+            id_to_place: Dictionary mapping geoname_id to SearchPlace
+            child_to_parent: Dictionary mapping child_id to parent_id from hierarchy
+            iso_to_country: Optional mapping of ISO code to country name
+        """
+        if iso_to_country is None:
+            iso_to_country = {}
+
+        for _name, places in places_dict.items():
+            if len(places) <= 1:
+                continue  # No disambiguation needed
+
+            # For each place, build full ancestor chain up to ADM1
+            for place in places:
+                ancestor_labels: list[str] = []
+                current_id = place.geoname_id
+
+                # Traverse up the hierarchy until ADM1 or end of chain
+                while True:
+                    parent_id = child_to_parent.get(current_id)
+                    if parent_id is None:
+                        break
+
+                    parent_place = id_to_place.get(parent_id)
+                    if parent_place is None:
+                        break
+
+                    ancestor_labels.append(parent_place.label)
+
+                    # Stop after collecting ADM1
+                    if parent_place.feature_code == "ADM1":
+                        break
+
+                    current_id = parent_id
+
+                # Build the label: place_name, followed by all ancestors, and
+                # country name
+                label_parts = [place.label, *ancestor_labels]
+
+                # Add country name if we have the country code and it's not already
+                # in ancestors
+                if place.country_code and place.country_code in iso_to_country:
+                    country_name = iso_to_country[place.country_code]
+                    # Only add if not already present and if there are ancestors
+                    # (to distinguish)
+                    if country_name not in ancestor_labels and ancestor_labels:
+                        label_parts.append(country_name)
+
+                if len(label_parts) > 1:
+                    place.label = ", ".join(label_parts)
+
+    def _write_places(
+        self, creator: Creator, places_dict: dict[str, list[SearchPlace]]
+    ) -> None:
+        """Create indexed ZIM items for places from any source.
+
+        Takes a dictionary of places grouped by name and creates:
+        - Redirect HTML for unique place names
+        - Disambiguation HTML for duplicate names
+        - CSS file for styling (styles.css)
+
+        Args:
+            creator: ZIM creator object
+            places_dict: Dictionary mapping place names to lists of SearchPlace objects
+        """
+        if not places_dict:
+            logger.info("  No places to write, skipping")
+            return
+
+        # Add CSS file to ZIM
+        assets = resources.files("maps2zim") / "assets"
+        styles_path = Path(str(assets / "styles.css"))
+        creator.add_item_for(
+            path="search/styles.css",
+            fpath=styles_path,
+            mimetype="text/css",
+        )
+
+        # Setup progress tracking
+        total_places = len(places_dict)
+        self.stats_items_total += total_places
+        last_log_time = time.time()
+        redirect_count = 0
+        disamb_count = 0
+
+        for i, (name, places) in enumerate(places_dict.items(), start=1):
+            self.stats_items_done += 1
+            run_pending()
+
+            # Log progress if more than 1 minute since last log
+            current_time = time.time()
+            if current_time - last_log_time > LOG_EVERY_SECONDS:
+                logger.info(
+                    f"  Writing places {i}/{total_places} "
+                    f"({i / total_places * 100:.1f}%)"
+                )
+                self._report_progress()
+                last_log_time = current_time
+
+            if len(places) == 1:
+                # Single place: create redirect
+                place = places[0]
+                redirect_html = self._create_redirect_html(place)
+                creator.add_item_for(
+                    path=f"search/{name}",
+                    content=redirect_html.encode("utf-8"),
+                    mimetype="text/html",
+                    title=name,
+                )
+                redirect_count += 1
+            else:
+                # Multiple places: create disambiguation page
+                disamb_html = self._create_disambiguation_html(name, places)
+                creator.add_item_for(
+                    path=f"search/{name}",
+                    content=disamb_html.encode("utf-8"),
+                    mimetype="text/html",
+                    title=name,
+                )
+                disamb_count += 1
+
+        logger.info(
+            f"  Added {redirect_count} redirects and {disamb_count} "
+            f"disambiguation pages"
+        )
+        self._report_progress()
+
+    @staticmethod
+    def _create_redirect_html(place: SearchPlace) -> str:
+        """Create a redirect HTML that redirects to the map viewer at the place."""
+        map_url = (
+            f"../index.html#lat={place.latitude}&lon={place.longitude}"
+            f"&zoom={place.zoom}"
+        )
+        return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>{place.label}</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="refresh" content="1;URL='{map_url}'" />
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <div class="icon">🗺️</div>
+        <h1>Opening Map</h1>
+        <div class="subtitle">Navigating to your location...</div>
+        <div class="location">{place.label}</div>
+        <div class="spinner"></div>
+        <div class="fallback">
+            If you're not redirected, <a href="{map_url}">click here to open the map</a>
+        </div>
+    </div>
+</body>
+</html>"""
+
+    @staticmethod
+    def _create_disambiguation_html(name: str, places: list[SearchPlace]) -> str:
+        """Create a disambiguation HTML with links to each place."""
+        places_html = "\n".join(
+            f'<a href="../index.html#lat={place.latitude}&lon={place.longitude}'
+            f'&zoom={place.zoom}" class="place-item"> '
+            f'<div class="place-label">{place.label}</div> '
+            f'<div class="place-coords">Lat: {place.latitude:.2f}, '
+            f"Lon: {place.longitude:.2f}</div> "
+            "</a>"
+            for place in places
+        )
+        return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>{name} - Disambiguation</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="icon">🌍</div>
+            <h1>{name}</h1>
+            <div class="subtitle">Disambiguation</div>
+            <div class="description">
+                This place name refers to <span class="count">{len(places)}</span>
+                different locations.
+            </div>
+        </div>
+        <div class="places-list">
+{places_html}
+        </div>
+    </div>
+</body>
+</html>"""

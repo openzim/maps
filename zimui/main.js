@@ -32,6 +32,42 @@ const toAbsolute = (url) => {
   }
 };
 
+// Parse URL fragment parameters for lat, lon, zoom
+const parseUrlFragment = () => {
+  const fragment = window.location.hash.substring(1);
+  if (!fragment) return null;
+
+  const params = new URLSearchParams(fragment);
+  const lat = params.get("lat");
+  const lon = params.get("lon");
+  const zoom = params.get("zoom");
+
+  if (lat !== null && lon !== null && zoom !== null) {
+    const latNum = parseFloat(lat);
+    const lonNum = parseFloat(lon);
+    const zoomNum = parseFloat(zoom);
+
+    if (
+      !isNaN(latNum) &&
+      !isNaN(lonNum) &&
+      !isNaN(zoomNum) &&
+      latNum >= -90 &&
+      latNum <= 90 &&
+      lonNum >= -180 &&
+      lonNum <= 180 &&
+      zoomNum >= 0 &&
+      zoomNum <= 14
+    ) {
+      return {
+        center: [lonNum, latNum],
+        zoom: zoomNum,
+      };
+    }
+  }
+
+  return null;
+};
+
 // Load config and initialize map
 (async () => {
   let mapConfig = { center: [0, 0], zoom: 0 };
@@ -69,23 +105,30 @@ const toAbsolute = (url) => {
       hasConfigDefaults = true;
     }
 
-    // Check for saved view in localStorage
-    let savedView = null;
-    if (storageKey) {
-      try {
-        savedView = JSON.parse(window.localStorage.getItem(storageKey));
-      } catch (e) {
-        console.warn("Could not parse saved view from localStorage:", e);
-      }
-    }
-
-    // Use saved view if available, otherwise use config values
-    if (savedView && savedView.center && savedView.zoom !== undefined) {
-      mapConfig.center = savedView.center;
-      mapConfig.zoom = savedView.zoom;
+    // Check for URL fragment parameters (highest priority)
+    const urlParams = parseUrlFragment();
+    if (urlParams) {
+      mapConfig.center = urlParams.center;
+      mapConfig.zoom = urlParams.zoom;
     } else {
-      mapConfig.center = defaultCenter;
-      mapConfig.zoom = defaultZoom;
+      // Check for saved view in localStorage
+      let savedView = null;
+      if (storageKey) {
+        try {
+          savedView = JSON.parse(window.localStorage.getItem(storageKey));
+        } catch (e) {
+          console.warn("Could not parse saved view from localStorage:", e);
+        }
+      }
+
+      // Use saved view if available, otherwise use config values
+      if (savedView && savedView.center && savedView.zoom !== undefined) {
+        mapConfig.center = savedView.center;
+        mapConfig.zoom = savedView.zoom;
+      } else {
+        mapConfig.center = defaultCenter;
+        mapConfig.zoom = defaultZoom;
+      }
     }
   } catch (error) {
     console.warn("Could not load config.json, using defaults:", error);

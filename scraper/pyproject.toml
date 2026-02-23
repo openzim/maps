@@ -45,6 +45,9 @@ exclude = ["/.github"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/maps2zim"]
+include = [
+  { path = "src/maps2zim/assets" },
+]
 
 [tool.hatch.envs.default]
 features = ["dev"]

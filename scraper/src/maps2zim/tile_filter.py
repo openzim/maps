@@ -3,7 +3,7 @@
 import math
 from pathlib import Path
 
-from shapely.geometry import Polygon
+from shapely.geometry import Point, Polygon
 from shapely.ops import unary_union
 from zimscraperlib.download import save_large_file
 
@@ -227,3 +227,17 @@ class TileFilter:
 
         # Check if tile intersects with any region
         return tile_box.intersects(self.unified_geometry)
+
+    def contains_point(self, lon: float, lat: float) -> bool:
+        """Check if a geographic point is within the loaded polygon regions.
+
+        Args:
+            lon: Longitude in degrees
+            lat: Latitude in degrees
+
+        Returns:
+            True if point is inside any region, or if no filtering is active.
+        """
+        if self.unified_geometry is None:
+            return True
+        return self.unified_geometry.contains(Point(lon, lat))
