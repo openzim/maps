@@ -11,18 +11,28 @@ This scrapers creates an offline maps, based on [OpenStreetMap](https://www.open
 
 ## Installation
 
-There are three main ways to install and use `maps2zim` from most recommended to least:
+Most recommended solution to run the scraper is to use pre-built Docker container.
 
-<details>
-<summary>Install using a pre-built container</summary>
+Prerequisites are:
 
-1. Download the image using `docker`:
+- [Docker](https://docs.docker.com/engine/install/) (or Docker-based engine)
+- amd64 architecture
 
-   ```sh
-   docker pull ghcr.io/openzim/maps
-   ```
+## Usage
 
-</details>
+```sh
+# Get help
+docker run -v output:/output ghcr.io/openzim/maps maps2zim --help
+```
+
+```sh
+# Create a ZIM for Europe
+docker run -v output:/output ghcr.io/openzim/maps maps2zim --include-poly=https://download.geofabrik.de/europe.poly --default-view=56.9,11.0,2.45 --name=maps_en_europe --title='Europe offline maps' --description='A ZIM with offline maps of the whole Europe area, including city search' --output=/output
+```
+## Advanced installation
+
+You can also use more advanced installation:
+
 <details>
 <summary>Build your own container</summary>
 
@@ -68,20 +78,6 @@ There are three main ways to install and use `maps2zim` from most recommended to
 
 </details>
 
-## Usage
-
-```sh
-# Get help
-docker run -v output:/output ghcr.io/openzim/maps maps2zim --help
-```
-
-TODO: add correct sample command below
-
-```sh
-# Create a ZIM for ...
-docker run -v output:/output ghcr.io/openzim/maps maps2zim ???
-```
-
 ## Developing
 
 Use the commands below to set up the project once:
@@ -97,7 +93,7 @@ Use the commands below to set up the project once:
 ❯ pre-commit install
 ```
 
-The following commands can be used to build and test the scraper:
+The following commands can then be used to build and test the scraper:
 
 ```sh
 # Show scripts
@@ -107,11 +103,8 @@ The following commands can be used to build and test the scraper:
 ❯ hatch run lint:all
 ❯ hatch run lint:fixall
 
-# run tests on all matrixed' envs
+# run tests
 ❯ hatch run test:run
-
-# run tests in a single matrixed' env
-❯ hatch env run -e test -i py=3.12 coverage
 
 # run static type checks
 ❯ hatch env run check:all
