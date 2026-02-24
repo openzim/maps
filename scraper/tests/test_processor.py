@@ -483,3 +483,144 @@ def test_parse_geonames_without_tile_filter():
         finally:
             # Restore original assets folder
             context.assets_folder = old_assets_folder
+
+
+def test_uses_geofabrik_polys_true_for_geofabrik_url():
+    """Test that _uses_geofabrik_polys detects a Geofabrik URL."""
+    assert (
+        Processor._uses_geofabrik_polys(  # pyright: ignore[reportPrivateUsage]
+            "https://download.geofabrik.de/europe/france.poly"
+        )
+        is True
+    )
+
+
+def test_uses_geofabrik_polys_true_for_mixed_urls():
+    """Test that _uses_geofabrik_polys detects Geofabrik in mixed URLs."""
+    assert (
+        Processor._uses_geofabrik_polys(  # pyright: ignore[reportPrivateUsage]
+            "https://example.com/a.poly,https://download.geofabrik.de/europe/france.poly"
+        )
+        is True
+    )
+
+
+def test_uses_geofabrik_polys_false_for_non_geofabrik():
+    """Test that _uses_geofabrik_polys returns False for non-Geofabrik URLs."""
+    assert (
+        Processor._uses_geofabrik_polys(  # pyright: ignore[reportPrivateUsage]
+            "https://example.com/region.poly"
+        )
+        is False
+    )
+
+
+def test_uses_geofabrik_polys_false_for_none():
+    """Test that _uses_geofabrik_polys returns False when no URLs are set."""
+    assert (
+        Processor._uses_geofabrik_polys(None)  # pyright: ignore[reportPrivateUsage]
+        is False
+    )
+
+
+def test_create_about_html_contains_title_and_description():
+    """Test that _create_about_html produces HTML with title and description."""
+    html = Processor._create_about_html(  # pyright: ignore[reportPrivateUsage]
+        title="My Map",
+        description="Short desc",
+        long_description=None,
+        zim_creator="openZIM",
+        publisher="openZIM",
+        include_geofabrik=False,
+    )
+    assert "My Map" in html
+    assert "Short desc" in html
+    assert "<!DOCTYPE html>" in html
+
+
+def test_create_about_html_single_creator_publisher():
+    """Test creator/publisher when they are the same."""
+    html = Processor._create_about_html(  # pyright: ignore[reportPrivateUsage]
+        title="T",
+        description="D",
+        long_description=None,
+        zim_creator="openZIM",
+        publisher="openZIM",
+        include_geofabrik=False,
+    )
+    assert "Created &amp; published by" in html
+    # Should NOT have separate lines for creator and publisher
+    assert "Created by</span>" not in html
+    assert "Published by</span>" not in html
+
+
+def test_create_about_html_different_creator_publisher():
+    """Test creator/publisher when they are different."""
+    html = Processor._create_about_html(  # pyright: ignore[reportPrivateUsage]
+        title="T",
+        description="D",
+        long_description=None,
+        zim_creator="Alice",
+        publisher="Bob",
+        include_geofabrik=False,
+    )
+    # Should have both "Created by" and "Published by" as separate labels
+    assert "Created by</span>" in html
+    assert "Published by</span>" in html
+    assert "Alice" in html
+    assert "Bob" in html
+
+
+def test_create_about_html_includes_geofabrik_when_flag_set():
+    """Test that Geofabrik appears in credits when flag is True."""
+    html = Processor._create_about_html(  # pyright: ignore[reportPrivateUsage]
+        title="T",
+        description="D",
+        long_description=None,
+        zim_creator="openZIM",
+        publisher="openZIM",
+        include_geofabrik=True,
+    )
+    assert "Geofabrik" in html
+
+
+def test_create_about_html_excludes_geofabrik_when_flag_not_set():
+    """Test that Geofabrik does not appear when flag is False."""
+    html = Processor._create_about_html(  # pyright: ignore[reportPrivateUsage]
+        title="T",
+        description="D",
+        long_description=None,
+        zim_creator="openZIM",
+        publisher="openZIM",
+        include_geofabrik=False,
+    )
+    assert "Geofabrik" not in html
+
+
+def test_create_about_html_includes_long_description():
+    """Test that long_description is included in HTML."""
+    html = Processor._create_about_html(  # pyright: ignore[reportPrivateUsage]
+        title="T",
+        description="D",
+        long_description="Long text here",
+        zim_creator="openZIM",
+        publisher="openZIM",
+        include_geofabrik=False,
+    )
+    assert "Long text here" in html
+
+
+def test_create_about_html_escapes_html_special_chars():
+    """Test that HTML special characters are properly escaped."""
+    html = Processor._create_about_html(  # pyright: ignore[reportPrivateUsage]
+        title="Test & <Title>",
+        description="Desc < > & desc",
+        long_description=None,
+        zim_creator="Creator & Co.",
+        publisher="Publisher",
+        include_geofabrik=False,
+    )
+    # Should have HTML entities instead of raw chars
+    assert "Test &amp; &lt;Title&gt;" in html
+    assert "Desc &lt; &gt; &amp; desc" in html
+    assert "Creator &amp; Co." in html

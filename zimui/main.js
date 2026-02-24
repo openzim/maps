@@ -182,6 +182,7 @@ const parseUrlFragment = () => {
   const resetButton = document.getElementById("resetButton");
   const styleSelector = document.getElementById("styleSelector");
   const coordsButton = document.getElementById("coordsButton");
+  const aboutButton = document.getElementById("aboutButton");
   const coordsPopover = document.getElementById("coordsPopover");
   const zoomLevel = document.getElementById("zoomLevel");
   const latitude = document.getElementById("latitude");
@@ -218,6 +219,11 @@ const parseUrlFragment = () => {
   // Toggle popover visibility
   coordsButton.addEventListener("click", () => {
     coordsPopover.classList.toggle("visible");
+  });
+
+  // About button functionality
+  aboutButton.addEventListener("click", () => {
+    window.location.href = toAbsolute("./content/about.html");
   });
 
   // Close popover when clicking outside

@@ -150,3 +150,77 @@ h1 {
     font-size: 12px;
     font-weight: 600;
 }
+
+/* About Page Styles */
+.section {
+    margin-top: 30px;
+    padding-top: 25px;
+    border-top: 1px solid #eee;
+}
+
+.section:first-child {
+    border-top: none;
+    margin-top: 0;
+}
+
+.section-title {
+    color: #333;
+    font-size: 18px;
+    font-weight: 600;
+    margin-bottom: 15px;
+}
+
+.credit-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 15px;
+    padding: 12px 0;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.credit-item:last-child {
+    border-bottom: none;
+}
+
+.credit-logo {
+    font-size: 24px;
+    flex-shrink: 0;
+    width: 32px;
+    text-align: center;
+}
+
+.credit-name {
+    font-weight: 600;
+    color: #333;
+    font-size: 15px;
+    margin-bottom: 3px;
+}
+
+.credit-desc {
+    color: #666;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.meta-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid #f5f5f5;
+    font-size: 14px;
+}
+
+.meta-item:last-child {
+    border-bottom: none;
+}
+
+.meta-label {
+    color: #999;
+    font-weight: 500;
+}
+
+.meta-value {
+    color: #333;
+    font-weight: 500;
+    text-align: right;
+}
