@@ -1,0 +1,123 @@
+{
+  "offliner_id": "maps",
+  "stdOutput": true,
+  "stdStats": true,
+  "flags": {
+    "include-poly": {
+      "type": "string",
+      "required": false,
+      "title": "Include Poly",
+      "description": "Comma-separated URL(s) of .poly file(s) defining regions to include"
+    },
+    "default-view": {
+      "type": "string",
+      "required": false,
+      "title": "Default View",
+      "description": "Default map view as longitude,latitude,zoom (e.g. 7.416,43.731,12). Sets the initial center and zoom level of the map when UI loads."
+    },
+    "name": {
+      "type": "string",
+      "required": true,
+      "title": "ZIM name",
+      "description": "Name of the ZIM",
+      "pattern": "^([a-z0-9\\-\\.]+_)([a-z\\-]+_)([a-z0-9\\-\\.]+)$"
+    },
+    "title": {
+      "type": "string",
+      "required": true,
+      "title": "ZIM title",
+      "description": "Title of the ZIM",
+      "minLength": 1,
+      "maxLength": 30
+    },
+    "description": {
+      "type": "string",
+      "required": true,
+      "title": "ZIM description",
+      "description": "Description of the ZIM",
+      "minLength": 1,
+      "maxLength": 80
+    },
+    "long-description": {
+      "type": "string",
+      "required": false,
+      "title": "ZIM long description",
+      "description": "Long description of the ZIM",
+      "minLength": 1,
+      "maxLength": 4000
+    },
+    "creator": {
+      "type": "string",
+      "required": false,
+      "title": "Creator",
+      "description": "Name of content creator"
+    },
+    "publisher": {
+      "type": "string",
+      "required": false,
+      "title": "Publisher",
+      "isPublisher": true,
+      "description": "Publisher name"
+    },
+    "file-name": {
+      "type": "string",
+      "required": false,
+      "title": "ZIM filename",
+      "description": "ZIM filename. Do not input trailing `.zim`, it will be automatically added. Defaults to {name}_{period}"
+    },
+    "tags": {
+      "type": "string",
+      "required": false,
+      "title": "ZIM tags",
+      "description": "Semicolon (;) delimited list of tags to add to the ZIM"
+    },
+    "secondary-color": {
+      "type": "string",
+      "required": false,
+      "title": "Secondary Color",
+      "description": "Secondary (background) color of ZIM UI. Hex/HTML syntax (#424242)",
+      "pattern": "^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$"
+    },
+    "illustration-url": {
+      "type": "string",
+      "required": false,
+      "title": "Illustration URL",
+      "description": "URL to illustration to use for ZIM illustration and favicon"
+    },
+    "include_up_to_zoom": {
+      "type": "integer",
+      "required": false,
+      "title": "Include Up To Zoom",
+      "description": "Include all tiles up to this zoom level, ignoring any poly filtering",
+      "min": 1,
+      "max": 14
+    },
+    "debug": {
+      "type": "boolean",
+      "required": false,
+      "title": "Debug",
+      "description": "Enable verbose output"
+    },
+    "area": {
+      "type": "string",
+      "required": false,
+      "title": "Area",
+      "description": "Area to download, either planet or monaco",
+      "pattern": "^planet|monaco$"
+    },
+    "output": {
+      "type": "string",
+      "required": false,
+      "title": "Output Folder",
+      "description": "Output folder for ZIMs. Default: /output",
+      "pattern": "^/output$"
+    },
+    "stats-filename": {
+      "type": "string",
+      "required": false,
+      "title": "Stats Filename",
+      "description": "Scraping progress file. Leave it as `/output/task_progress.json`",
+      "pattern": "^/output/task_progress\\.json$"
+    },
+  }
+}
