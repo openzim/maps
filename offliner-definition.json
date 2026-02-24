@@ -118,6 +118,6 @@
       "title": "Stats Filename",
       "description": "Scraping progress file. Leave it as `/output/task_progress.json`",
       "pattern": "^/output/task_progress\\.json$"
-    },
+    }
   }
 }
