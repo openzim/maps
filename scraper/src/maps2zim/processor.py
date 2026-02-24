@@ -3,6 +3,7 @@ import gzip
 import html
 import json
 import logging
+import re
 import sqlite3
 import tarfile
 import time
@@ -20,11 +21,11 @@ from zimscraperlib.image import convert_image, resize_image
 from zimscraperlib.image.conversion import convert_svg2png
 from zimscraperlib.image.probing import format_for
 from zimscraperlib.zim import Creator, metadata
+from zimscraperlib.zim.dedup import Deduplicator
 from zimscraperlib.zim.filesystem import (
     validate_file_creatable,
     validate_folder_writable,
 )
-from zimscraperlib.zim.indexing import IndexData
 
 from maps2zim.constants import (
     NAME,
@@ -467,38 +468,6 @@ class Processor:
         )
         return favicon
 
-    def _add_indexing_item_to_zim(
-        self,
-        creator: Creator,
-        title: str,
-        content: str,
-        fname: str,
-        zimui_redirect: str,
-    ):
-        """Add a 'fake' item to the ZIM, with proper indexing data
-
-        This is mandatory for suggestions and fulltext search to work properly, since
-        we do not really have pages to search for.
-
-        This item is a very basic HTML which automatically redirect to proper Vue.JS URL
-        """
-
-        redirect_url = f"../index.html#/{zimui_redirect}"
-        html_content = (
-            f"<html><head><title>{title}</title>"
-            f'<meta http-equiv="refresh" content="0;URL=\'{redirect_url}\'" />'
-            f"</head><body></body></html>"
-        )
-
-        logger.debug(f"Adding {fname} to ZIM index")
-        creator.add_item_for(
-            title=title,
-            path="index/" + fname,
-            content=html_content.encode("utf-8"),
-            mimetype="text/html",
-            index_data=IndexData(title=title, content=content),
-        )
-
     def _fetch_fonts_tar_gz(self):
         """Download fonts tar.gz from OpenFreeMap if not already cached.
 
@@ -534,6 +503,10 @@ class Processor:
 
         logger.info("  Extracting fonts and adding to ZIM")
 
+        # Create a deduplicator to detect duplicate natural earth tiles and save space
+        deduplicator = Deduplicator(creator)
+        deduplicator.filters.append(re.compile(".*"))
+
         # Extract and add fonts to ZIM
         with tarfile.open(fonts_tar_gz_path, "r:gz") as tar:
             for member in tar.getmembers():
@@ -546,7 +519,7 @@ class Processor:
                         # fonts/{fontstack}/{range}.pbf
                         relative_path = member.name.replace("ofm/", "", 1)
                         zim_path = f"fonts/{relative_path}"
-                        creator.add_item_for(
+                        deduplicator.add_item_for(
                             path=zim_path,
                             content=content,
                         )
@@ -574,7 +547,7 @@ class Processor:
 
         logger.info("  Downloading natural_earth from OpenFreeMap")
         save_large_file(
-            "http://assets.openfreemap.com/natural_earth/ofm.tar.gz",
+            "https://assets.openfreemap.com/natural_earth/ofm.tar.gz",
             fpath=natural_earth_tar_gz_path,
         )
         logger.info(f"  natural_earth tar.gz saved to {natural_earth_tar_gz_path}")
@@ -589,6 +562,10 @@ class Processor:
 
         logger.info("  Extracting natural_earth and adding to ZIM")
 
+        # Create a deduplicator to detect duplicate natural earth tiles and save space
+        deduplicator = Deduplicator(creator)
+        deduplicator.filters.append(re.compile(".*"))
+
         # Extract and add natural_earth to ZIM
         with tarfile.open(natural_earth_tar_gz_path, "r:gz") as tar:
             for member in tar.getmembers():
@@ -600,7 +577,7 @@ class Processor:
                         # Transform path from ofm/ne2sr/... to natural_earth/ne2sr/...
                         relative_path = member.name.replace("ofm/ne2sr/", "", 1)
                         zim_path = f"natural_earth/ne2sr/{relative_path}"
-                        creator.add_item_for(
+                        deduplicator.add_item_for(
                             path=zim_path,
                             content=content,
                         )
@@ -1437,6 +1414,10 @@ class Processor:
                     try:
                         geoname_id = parts[0]
                         name = parts[1]
+                        # Remove leading/trailing slashes
+                        name = name.strip("/")
+                        # Replace multiple slashes with a single slash
+                        name = re.sub(r"/+", "/", name)
                         feature_code = (
                             parts[7] if len(parts) > 7 else ""  # noqa: PLR2004
                         )
@@ -1648,12 +1629,14 @@ class Processor:
                 self._report_progress()
                 last_log_time = current_time
 
+            path = f"search/{name}"
+            root_prefix = "../" * path.count("/")
             if len(places) == 1:
                 # Single place: create redirect
                 place = places[0]
-                redirect_html = self._create_redirect_html(place)
+                redirect_html = self._create_redirect_html(place, root_prefix)
                 creator.add_item_for(
-                    path=f"search/{name}",
+                    path=path,
                     content=redirect_html.encode("utf-8"),
                     mimetype="text/html",
                     title=name,
@@ -1661,9 +1644,11 @@ class Processor:
                 redirect_count += 1
             else:
                 # Multiple places: create disambiguation page
-                disamb_html = self._create_disambiguation_html(name, places)
+                disamb_html = self._create_disambiguation_html(
+                    name, places, root_prefix
+                )
                 creator.add_item_for(
-                    path=f"search/{name}",
+                    path=path,
                     content=disamb_html.encode("utf-8"),
                     mimetype="text/html",
                     title=name,
@@ -1677,10 +1662,10 @@ class Processor:
         self._report_progress()
 
     @staticmethod
-    def _create_redirect_html(place: SearchPlace) -> str:
+    def _create_redirect_html(place: SearchPlace, root_prefix: str) -> str:
         """Create a redirect HTML that redirects to the map viewer at the place."""
         map_url = (
-            f"../index.html#lat={place.latitude}&lon={place.longitude}"
+            f"{root_prefix}index.html#lat={place.latitude}&lon={place.longitude}"
             f"&zoom={place.zoom}"
         )
         return f"""<!DOCTYPE html>
@@ -1690,7 +1675,7 @@ class Processor:
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="refresh" content="1;URL='{map_url}'" />
-    <link rel="stylesheet" href="../content/styles.css">
+    <link rel="stylesheet" href="{root_prefix}content/styles.css">
 </head>
 <body>
     <div class="container">
@@ -1707,11 +1692,13 @@ class Processor:
 </html>"""
 
     @staticmethod
-    def _create_disambiguation_html(name: str, places: list[SearchPlace]) -> str:
+    def _create_disambiguation_html(
+        name: str, places: list[SearchPlace], root_prefix: str
+    ) -> str:
         """Create a disambiguation HTML with links to each place."""
         places_html = "\n".join(
-            f'<a href="../index.html#lat={place.latitude}&lon={place.longitude}'
-            f'&zoom={place.zoom}" class="place-item"> '
+            f'<a href="{root_prefix}index.html#lat={place.latitude}'
+            f'&lon={place.longitude}&zoom={place.zoom}" class="place-item"> '
             f'<div class="place-label">{place.label}</div> '
             f'<div class="place-coords">Lat: {place.latitude:.2f}, '
             f"Lon: {place.longitude:.2f}</div> "
@@ -1724,7 +1711,7 @@ class Processor:
     <title>{name} - Disambiguation</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="../content/styles.css">
+    <link rel="stylesheet" href="{root_prefix}content/styles.css">
 </head>
 <body>
     <div class="container">
@@ -1932,7 +1919,7 @@ class Processor:
 
         # Add to ZIM
         creator.add_item_for(
-            path="about.html",
+            path="content/about.html",
             content=about_html.encode("utf-8"),
             mimetype="text/html",
             is_front=True,
