@@ -1,5 +1,6 @@
 import datetime
 import gzip
+import html
 import json
 import logging
 import sqlite3
@@ -10,6 +11,7 @@ from importlib import resources
 from io import BytesIO
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from pydantic import BaseModel
 from schedule import every, run_pending
@@ -271,6 +273,10 @@ class Processor:
                     fpath=file,
                     is_front=False,
                 )
+
+        context.current_thread_workitem = "about page"
+        logger.info("  Generating about page...")
+        self._write_about_html(creator)
 
         context.current_thread_workitem = "download fonts"
         self._fetch_fonts_tar_gz()
@@ -1616,7 +1622,7 @@ class Processor:
         assets = resources.files("maps2zim") / "assets"
         styles_path = Path(str(assets / "styles.css"))
         creator.add_item_for(
-            path="search/styles.css",
+            path="content/styles.css",
             fpath=styles_path,
             mimetype="text/css",
         )
@@ -1684,7 +1690,7 @@ class Processor:
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="refresh" content="1;URL='{map_url}'" />
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="../content/styles.css">
 </head>
 <body>
     <div class="container">
@@ -1718,7 +1724,7 @@ class Processor:
     <title>{name} - Disambiguation</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="../content/styles.css">
 </head>
 <body>
     <div class="container">
@@ -1737,3 +1743,198 @@ class Processor:
     </div>
 </body>
 </html>"""
+
+    @staticmethod
+    def _uses_geofabrik_polys(include_poly_urls: str | None) -> bool:
+        """Check if any of the poly URLs is from Geofabrik.
+
+        Args:
+            include_poly_urls: Comma-separated URLs of .poly files
+
+        Returns:
+            True if at least one URL has 'geofabrik.de' in hostname
+        """
+        if not include_poly_urls:
+            return False
+        for url in include_poly_urls.split(","):
+            hostname = urlparse(url.strip()).hostname or ""
+            if "geofabrik.de" in hostname:
+                return True
+        return False
+
+    @staticmethod
+    def _create_about_html(
+        title: str,
+        description: str,
+        long_description: str | None,
+        zim_creator: str,
+        publisher: str,
+        *,
+        include_geofabrik: bool,
+    ) -> str:
+        """Create an about.html page for the ZIM.
+
+        Args:
+            title: ZIM title
+            description: ZIM description (short)
+            long_description: ZIM long description (optional)
+            zim_creator: Creator name
+            publisher: Publisher name
+            include_geofabrik: Whether to include Geofabrik in credits
+
+        Returns:
+            HTML string for about.html page
+        """
+        # HTML-escape all user inputs to prevent XSS
+        title_escaped = html.escape(title)
+        description_escaped = html.escape(description)
+        long_desc_escaped = html.escape(long_description) if long_description else ""
+        creator_escaped = html.escape(zim_creator)
+        publisher_escaped = html.escape(publisher)
+
+        # Build creator/publisher section
+        if zim_creator == publisher:
+            meta_rows = (
+                '<div class="meta-item"><span class="meta-label">'
+                "Created &amp; published by</span>"
+                f'<span class="meta-value">{creator_escaped}</span></div>'
+            )
+        else:
+            meta_rows = (
+                '<div class="meta-item"><span class="meta-label">'
+                "Created by</span>"
+                f'<span class="meta-value">{creator_escaped}</span></div>'
+                '<div class="meta-item"><span class="meta-label">'
+                "Published by</span>"
+                f'<span class="meta-value">{publisher_escaped}</span></div>'
+            )
+
+        long_desc_html = (
+            f'<p class="description">{long_desc_escaped}</p>'
+            if long_description
+            else ""
+        )
+
+        # Build credits
+        credits_list: list[tuple[str, str, str, str]] = [
+            (
+                "🗺️",
+                "OpenStreetMap",
+                "https://www.openstreetmap.org",
+                "The map data in this ZIM is made available by the "
+                "OpenStreetMap project and its community of contributors, "
+                "licensed under the Open Database License (ODbL).",
+            ),
+            (
+                "🌐",
+                "OpenFreeMap",
+                "https://openfreemap.org",
+                "Pre-processed vector tiles, map styles, fonts, and "
+                "sprites used in this ZIM are provided by OpenFreeMap.",
+            ),
+            (
+                "🌍",
+                "Natural Earth",
+                "https://www.naturalearthdata.com",
+                "Background raster map imagery is derived from Natural Earth data.",
+            ),
+            (
+                "📍",
+                "GeoNames",
+                "https://www.geonames.org",
+                "Place names and geographic coordinates for the search "
+                "index are sourced from the GeoNames geographical database.",
+            ),
+        ]
+        if include_geofabrik:
+            credits_list.append(
+                (
+                    "📁",
+                    "Geofabrik",
+                    "https://www.geofabrik.de",
+                    "Region definition files (.poly) used to filter this "
+                    "ZIM's content to specific geographic areas are "
+                    "provided by Geofabrik GmbH.",
+                )
+            )
+        credits_list.append(
+            (
+                "📦",
+                "Kiwix / openZIM",
+                "https://www.kiwix.org",
+                "This offline package was created using the openZIM "
+                "scraper tools and the Kiwix ZIM format.",
+            )
+        )
+
+        credits_html = "\n".join(
+            f"""<div class="credit-item">
+                <div class="credit-logo">{logo}</div>
+                <div class="credit-content">
+                    <div class="credit-name"><a href="{url}" """
+            f"""target="_blank">{name}</a></div>
+                    <div class="credit-desc">{desc}</div>
+                </div>
+            </div>"""
+            for logo, name, url, desc in credits_list
+        )
+
+        page_html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>About - {title_escaped}</title>
+    <link rel="stylesheet" href="../content/styles.css">
+</head>
+<body>
+    <div class="container" style="max-width:700px">
+        <div class="header">
+            <div class="icon">🗺️</div>
+            <h1>{title_escaped}</h1>
+            <p class="subtitle">{description_escaped}</p>
+        </div>
+
+        <div class="section">
+            {long_desc_html}
+            {meta_rows}
+        </div>
+
+        <div class="section">
+            <div class="section-title">Credits &amp; Attribution</div>
+            {credits_html}
+        </div>
+    </div>
+</body>
+</html>"""
+        return page_html
+
+    def _write_about_html(self, creator: Creator) -> None:
+        """Generate and add about.html to the ZIM."""
+        title = self.formatted_config.title
+        description = self.formatted_config.description
+        long_description = self.formatted_config.long_description
+        zim_creator = self.formatted_config.creator
+        publisher = self.formatted_config.publisher
+
+        # Check if Geofabrik should be credited
+        include_geofabrik = self._uses_geofabrik_polys(context.include_poly_urls)
+
+        # Generate HTML
+        about_html = self._create_about_html(
+            title=title,
+            description=description,
+            long_description=long_description,
+            zim_creator=zim_creator,
+            publisher=publisher,
+            include_geofabrik=include_geofabrik,
+        )
+
+        # Add to ZIM
+        creator.add_item_for(
+            path="about.html",
+            content=about_html.encode("utf-8"),
+            mimetype="text/html",
+            is_front=True,
+            title=f"About - {title}",
+        )

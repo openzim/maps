@@ -29,7 +29,8 @@ body {
 }
 
 .reset-button,
-.coords-button {
+.coords-button,
+.about-button {
   width: 25px;
   height: 25px;
   border-radius: 50%;
@@ -49,13 +50,15 @@ body {
 }
 
 .reset-button:hover,
-.coords-button:hover {
+.coords-button:hover,
+.about-button:hover {
   background-color: #f5f5f5;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
 .reset-button:active,
-.coords-button:active {
+.coords-button:active,
+.about-button:active {
   transform: scale(0.95);
 }
 
