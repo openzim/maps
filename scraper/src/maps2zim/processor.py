@@ -375,8 +375,6 @@ class Processor:
         filtering_results: FilteringResult | None = None
         if tile_filter:
             context.current_thread_workitem = "filtering tiles"
-            # Add all tiles to progress total for filtering step
-            self.stats_items_total += tile_count
             # Collect filtered data (dedup IDs and redirects) in single pass
             filtering_results = self._collect_filtered_tiles_data(
                 tile_filter, tile_count
@@ -385,8 +383,8 @@ class Processor:
             self.stats_items_total += len(filtering_results.redirects)
 
         context.current_thread_workitem = "dedupl files"
-        # Calculate total dedup count (use filtered if available, otherwise full)
-        dedupl_total = (
+        # Calculate filtered dedup count (items that will actually be added to ZIM)
+        dedupl_filtered = (
             len(filtering_results.dedup_ids)
             if filtering_results is not None
             else dedupl_count
@@ -394,7 +392,8 @@ class Processor:
         self._write_dedupl_files(
             creator,
             filtering_results.dedup_ids if filtering_results else None,
-            dedupl_total,
+            dedupl_count,  # Pass total for progress logging
+            dedupl_filtered,  # Pass filtered count for ZIM additions
         )
 
         context.current_thread_workitem = "tile files"
@@ -1107,7 +1106,8 @@ class Processor:
         self,
         creator: Creator,
         filtered_dedup_ids: set[int] | None,
-        filtered_total: int,
+        total_dedup_count: int,
+        filtered_dedup_count: int,
     ):
         """Extract unique tile data from mbtiles and add to ZIM.
 
@@ -1118,23 +1118,29 @@ class Processor:
         Args:
             creator: ZIM creator object
             filtered_dedup_ids: Optional set of dedup IDs to include (for filtering)
-            filtered_total: Number of dedup items to process (avoids SELECT COUNT(*))
+            total_dedup_count: Total dedup items in database (for progress reporting)
+            filtered_dedup_count: Dedup items that will be added to ZIM (for logging)
         """
         mbtiles_path = context.assets_folder / f"{context.area}.mbtiles"
         conn = sqlite3.connect(mbtiles_path)
         c = conn.cursor()
 
         try:
-            logger.info(f"  Adding {filtered_total} unique tile data entries to ZIM")
+            logger.info(
+                f"  Adding {filtered_dedup_count} dedup files to ZIM "
+                f"(from {total_dedup_count} total in database)"
+            )
 
             last_log_time = time.time()
             c.execute("select tile_data_id, tile_data from tiles_data")
             processed_count = 0
+            added_count = 0
 
             for row in c:
                 dedupl_id = row[0]
 
-                # Update progress (at the beginning for simplicity should we skip tile)
+                # Update progress (at the beginning since all rows consume database I/O
+                # time)
                 self.stats_items_done += 1
                 run_pending()
                 processed_count += 1
@@ -1143,8 +1149,9 @@ class Processor:
                 current_time = time.time()
                 if current_time - last_log_time > LOG_EVERY_SECONDS:
                     logger.info(
-                        f"  Added {processed_count}/{filtered_total} dedupl files "
-                        f"({processed_count / filtered_total * 100:.1f}%)"
+                        f"  Processed {processed_count}/{total_dedup_count} dedup "
+                        f"files ({processed_count / total_dedup_count * 100:.1f}%) - "
+                        f"{added_count} added to ZIM"
                     )
                     last_log_time = current_time
 
@@ -1155,6 +1162,7 @@ class Processor:
                 ):
                     continue
 
+                added_count += 1
                 tile_data = row[1]
 
                 # Decompress gzipped tile data
