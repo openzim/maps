@@ -24,33 +24,43 @@ To achieve this, first build the Docker image based on current code base.
 docker build -t local-maps .
 ```
 
-TODO: fix text+command below
-
-Scrape ... but you could use any other one of interest for your UI developments).
+In general, you will run scraper only on `monaco` subset so that you avoid processsing the `planet` mbtiles. You also want only a small Geonames subset, e.g. `FR`. You can for instance run the following command:
 
 ```
-docker run --rm -it -v "$PWD/output":/output local-maps maps2zim --name maps-tests_en_all --title "Maps" --description "Tests maps" --file-name maps-tests_en_all --overwrite
+docker run --rm -it -v "$PWD/output":/output -v "$PWD/tmp":/tmp local-maps maps2zim --area monaco --geonames-region FR --name maps-tests_en_all --title "Maps Test" --description "Test ZIM for maps" --file-name "maps-tests_en_all" --default-view=43.74,7.43,13 --tmp /tmp --overwrite
 ```
 
-Extract interesting ZIM content and move it to `public` folder.
+Extract interesting (scraper-generated) ZIM content and move it to `public` folder.
 
 ```
-rm -rf zimui/public/content
-docker run -it --rm -v $(pwd)/output:/data ghcr.io/openzim/zim-tools:latest zimdump dump --dir=/data/maps-tests_en_all /data/maps-tests_en_all.zim
-sudo chown -R $(id -u -n):$(id -g -n) output/maps-tests_en_all
-mv output/maps-tests_en_all/content zimui/public
-rm -rf output/maps-tests_en_all
+rm -rf extract
+docker run -it --rm -v $(pwd)/output:/data -v $(pwd)/extract:/extract ghcr.io/openzim/zim-tools:latest zimdump dump --dir=/extract /data/maps-tests_en_all.zim
+sudo chown -R $(id -u -n):$(id -g -n) extract
 ```
 
-Start ZIM UI locally.
+Compile UI and copy.
 
 ```
 cd zimui
-yarn dev
+yarn build
+cp -r dist/* ../extract
+cd ..
 ```
 
-Do not forget to cleanup `public/content` folder before building the docker image again, otherwise all assets will be pushed to the ZIM.
+Start a local server in extract folder, e.g. with python:
 
 ```
-rm -rf zimui/public/content
+cd extract
+python -m http.server <your_port> --bind <your_ip>
+cd ..
+```
+
+And then open `http://your_ip:your_port`
+
+Should you want to change UI code, you just need to repeat the compile UI and copy step
+
+To clean-up:
+
+```
+rm -rf extract
 ```

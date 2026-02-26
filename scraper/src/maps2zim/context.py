@@ -108,6 +108,9 @@ class Context:
     # Default map view: (longitude, latitude, zoom)
     default_view: tuple[float, float, float] | None = None
 
+    # Geonames region to download (e.g. "allCountries", "FR", "US")
+    geonames_region: str = "allCountries"
+
     @classmethod
     def setup(cls, **kwargs: Any):
         new_instance = cls(**kwargs)

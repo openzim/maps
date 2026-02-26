@@ -42,7 +42,6 @@ context = Context.get()
 logger = context.logger
 
 LOG_EVERY_SECONDS = 60
-GEONAMES_REGION = "allCountries"  # Customize if needed when developing
 
 
 class FilteringResult(BaseModel):
@@ -375,8 +374,6 @@ class Processor:
         filtering_results: FilteringResult | None = None
         if tile_filter:
             context.current_thread_workitem = "filtering tiles"
-            # Add all tiles to progress total for filtering step
-            self.stats_items_total += tile_count
             # Collect filtered data (dedup IDs and redirects) in single pass
             filtering_results = self._collect_filtered_tiles_data(
                 tile_filter, tile_count
@@ -385,8 +382,8 @@ class Processor:
             self.stats_items_total += len(filtering_results.redirects)
 
         context.current_thread_workitem = "dedupl files"
-        # Calculate total dedup count (use filtered if available, otherwise full)
-        dedupl_total = (
+        # Calculate filtered dedup count (items that will actually be added to ZIM)
+        dedupl_filtered = (
             len(filtering_results.dedup_ids)
             if filtering_results is not None
             else dedupl_count
@@ -394,7 +391,8 @@ class Processor:
         self._write_dedupl_files(
             creator,
             filtering_results.dedup_ids if filtering_results else None,
-            dedupl_total,
+            dedupl_count,  # Pass total for progress logging
+            dedupl_filtered,  # Pass filtered count for ZIM additions
         )
 
         context.current_thread_workitem = "tile files"
@@ -591,13 +589,13 @@ class Processor:
         extracts the TSV file, and removes the ZIP file.
         The extracted TSV is cached in the assets folder for processing.
         """
-        geonames_zip_path = context.assets_folder / f"{GEONAMES_REGION}.zip"
-        geonames_txt_path = context.assets_folder / f"{GEONAMES_REGION}.txt"
+        geonames_zip_path = context.assets_folder / f"{context.geonames_region}.zip"
+        geonames_txt_path = context.assets_folder / f"{context.geonames_region}.txt"
 
         # If extracted TSV file already exists, we're done
         if geonames_txt_path.exists():
             logger.info(
-                f"  using geonames {GEONAMES_REGION} TSV already available at "
+                f"  using geonames {context.geonames_region} TSV already available at "
                 f"{geonames_txt_path}"
             )
             return
@@ -605,18 +603,22 @@ class Processor:
         # Create assets folder if it doesn't exist
         context.assets_folder.mkdir(parents=True, exist_ok=True)
 
-        logger.info(f"  Downloading geonames {GEONAMES_REGION} from geonames.org")
+        logger.info(
+            f"  Downloading geonames {context.geonames_region} from geonames.org"
+        )
         geonames_url = (
-            f"https://download.geonames.org/export/dump/{GEONAMES_REGION}.zip"
+            f"https://download.geonames.org/export/dump/{context.geonames_region}.zip"
         )
         save_large_file(geonames_url, fpath=geonames_zip_path)
-        logger.info(f"  geonames {GEONAMES_REGION} ZIP saved to {geonames_zip_path}")
+        logger.info(
+            f"  geonames {context.geonames_region} ZIP saved to {geonames_zip_path}"
+        )
 
         # Extract TSV file from ZIP
-        logger.info(f"  Extracting {GEONAMES_REGION}.txt from ZIP")
+        logger.info(f"  Extracting {context.geonames_region}.txt from ZIP")
         with zipfile.ZipFile(geonames_zip_path, "r") as zip_ref:
             # Extract the TSV file (named {region}.txt)
-            txt_file_name = f"{GEONAMES_REGION}.txt"
+            txt_file_name = f"{context.geonames_region}.txt"
             if txt_file_name not in zip_ref.namelist():
                 raise OSError(
                     f"Could not find {txt_file_name} in geonames ZIP at "
@@ -1107,7 +1109,8 @@ class Processor:
         self,
         creator: Creator,
         filtered_dedup_ids: set[int] | None,
-        filtered_total: int,
+        total_dedup_count: int,
+        filtered_dedup_count: int,
     ):
         """Extract unique tile data from mbtiles and add to ZIM.
 
@@ -1118,23 +1121,29 @@ class Processor:
         Args:
             creator: ZIM creator object
             filtered_dedup_ids: Optional set of dedup IDs to include (for filtering)
-            filtered_total: Number of dedup items to process (avoids SELECT COUNT(*))
+            total_dedup_count: Total dedup items in database (for progress reporting)
+            filtered_dedup_count: Dedup items that will be added to ZIM (for logging)
         """
         mbtiles_path = context.assets_folder / f"{context.area}.mbtiles"
         conn = sqlite3.connect(mbtiles_path)
         c = conn.cursor()
 
         try:
-            logger.info(f"  Adding {filtered_total} unique tile data entries to ZIM")
+            logger.info(
+                f"  Adding {filtered_dedup_count} dedup files to ZIM "
+                f"(from {total_dedup_count} total in database)"
+            )
 
             last_log_time = time.time()
             c.execute("select tile_data_id, tile_data from tiles_data")
             processed_count = 0
+            added_count = 0
 
             for row in c:
                 dedupl_id = row[0]
 
-                # Update progress (at the beginning for simplicity should we skip tile)
+                # Update progress (at the beginning since all rows consume database I/O
+                # time)
                 self.stats_items_done += 1
                 run_pending()
                 processed_count += 1
@@ -1143,8 +1152,9 @@ class Processor:
                 current_time = time.time()
                 if current_time - last_log_time > LOG_EVERY_SECONDS:
                     logger.info(
-                        f"  Added {processed_count}/{filtered_total} dedupl files "
-                        f"({processed_count / filtered_total * 100:.1f}%)"
+                        f"  Processed {processed_count}/{total_dedup_count} dedup "
+                        f"files ({processed_count / total_dedup_count * 100:.1f}%) - "
+                        f"{added_count} added to ZIM"
                     )
                     last_log_time = current_time
 
@@ -1155,6 +1165,7 @@ class Processor:
                 ):
                     continue
 
+                added_count += 1
                 tile_data = row[1]
 
                 # Decompress gzipped tile data
@@ -1381,13 +1392,13 @@ class Processor:
             Dictionary mapping place names to lists of SearchPlace objects.
             Returns empty dict if data file is not available.
         """
-        geonames_txt_path = context.assets_folder / f"{GEONAMES_REGION}.txt"
+        geonames_txt_path = context.assets_folder / f"{context.geonames_region}.txt"
 
         if not geonames_txt_path.exists():
             logger.info("  Geonames data not available, skipping")
             return {}
 
-        logger.info(f"  Processing geonames {GEONAMES_REGION} entries")
+        logger.info(f"  Processing geonames {context.geonames_region} entries")
 
         # ADM feature codes to zoom level mapping
         adm_zoom_map = {
