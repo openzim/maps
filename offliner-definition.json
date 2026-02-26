@@ -13,7 +13,7 @@
       "type": "string",
       "required": false,
       "title": "Default View",
-      "description": "Default map view as longitude,latitude,zoom (e.g. 7.416,43.731,12). Sets the initial center and zoom level of the map when UI loads."
+      "description": "Default map view as latitude,longitude,zoom (e.g. 46.51,6.63,14 for Kiwix headquarters). Sets the initial center and zoom level of the map when UI loads."
     },
     "name": {
       "type": "string",
