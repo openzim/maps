@@ -198,6 +198,13 @@ def prepare_context(raw_args: list[str], tmpdir: str) -> None:
         dest="default_view",
     )
 
+    parser.add_argument(
+        "--geonames-region",
+        help="Geonames region to download (e.g. 'allCountries', 'FR', 'US'). "
+        "Default: allCountries",
+        dest="geonames_region",
+    )
+
     args = parser.parse_args(raw_args)
 
     # Ignore unset values so they do not override the default specified in Context

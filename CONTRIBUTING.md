@@ -24,10 +24,10 @@ To achieve this, first build the Docker image based on current code base.
 docker build -t local-maps .
 ```
 
-In general, you will run scraper only on `monaco` subset so that you avoid processsing the `planet` mbtiles. You can for instance run same command as CI for integration tests:
+In general, you will run scraper only on `monaco` subset so that you avoid processsing the `planet` mbtiles. You also want only a small Geonames subset, e.g. `FR`. You can for instance run the following command:
 
 ```
-docker run --rm -it -v "$PWD/output":/output -v "$PWD/tmp":/tmp local-maps maps2zim --area monaco --name maps-tests_en_all --title "Maps Test" --description "Test ZIM for maps" --file-name "maps-tests_en_all" --default-view=43.74,7.43,13 --tmp /tmp --overwrite
+docker run --rm -it -v "$PWD/output":/output -v "$PWD/tmp":/tmp local-maps maps2zim --area monaco --geonames-region FR --name maps-tests_en_all --title "Maps Test" --description "Test ZIM for maps" --file-name "maps-tests_en_all" --default-view=43.74,7.43,13 --tmp /tmp --overwrite
 ```
 
 Extract interesting (scraper-generated) ZIM content and move it to `public` folder.

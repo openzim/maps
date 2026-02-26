@@ -99,7 +99,7 @@ jobs:
           mv zim-tools_linux-x86_64-*/zim* /usr/local/bin/
 
       - name: Run scraper
-        run: docker run -v $PWD/output:/output local-maps maps2zim --area monaco --name maps_en_test --title "Maps Test" --description "Test ZIM for maps" --file-name "tests_en_maps" --default-view=43.74,7.43,13
+        run: docker run -v $PWD/output:/output local-maps maps2zim --area monaco --geonames-region FR --name maps_en_test --title "Maps Test" --description "Test ZIM for maps" --file-name "tests_en_maps" --default-view=43.74,7.43,13
 
       - name: archive ZIM
         uses: actions/upload-artifact@v6
