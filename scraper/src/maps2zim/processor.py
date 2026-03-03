@@ -157,6 +157,8 @@ class Processor:
         logger.debug(f"User-Agent: {context.wm_user_agent}")
 
         creator = Creator(zim_path, "index.html")
+        if context.zim_workers is not None:
+            creator.config_nbworkers(context.zim_workers)
 
         logger.info("  Fetching ZIM illustration...")
         zim_illustration = self._fetch_zim_illustration()

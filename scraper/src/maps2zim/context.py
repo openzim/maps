@@ -111,6 +111,9 @@ class Context:
     # Geonames region to download (e.g. "allCountries", "FR", "US")
     geonames_region: str = "allCountries"
 
+    # Number of worker threads for the ZIM creator
+    zim_workers: int | None = None
+
     @classmethod
     def setup(cls, **kwargs: Any):
         new_instance = cls(**kwargs)

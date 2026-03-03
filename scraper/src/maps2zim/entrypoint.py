@@ -205,6 +205,13 @@ def prepare_context(raw_args: list[str], tmpdir: str) -> None:
         dest="geonames_region",
     )
 
+    parser.add_argument(
+        "--zim-workers",
+        type=int,
+        help="Number of worker threads for the ZIM creator. Default: libzim default",
+        dest="zim_workers",
+    )
+
     args = parser.parse_args(raw_args)
 
     # Ignore unset values so they do not override the default specified in Context
