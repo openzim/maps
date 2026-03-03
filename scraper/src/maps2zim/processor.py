@@ -6,6 +6,7 @@ import logging
 import re
 import sqlite3
 import tarfile
+import threading
 import time
 import zipfile
 from importlib import resources
@@ -20,6 +21,7 @@ from zimscraperlib.download import save_large_file
 from zimscraperlib.image import convert_image, resize_image
 from zimscraperlib.image.conversion import convert_svg2png
 from zimscraperlib.image.probing import format_for
+from zimscraperlib.typing import Callback
 from zimscraperlib.zim import Creator, metadata
 from zimscraperlib.zim.dedup import Deduplicator
 from zimscraperlib.zim.filesystem import (
@@ -80,6 +82,9 @@ class Processor:
         # increase counter at the beginning of every for loop, not minding about what
         # could happen in the loop in terms of exit conditions
         self.stats_items_total = 1
+
+        # Semaphore for backpressure: limit items in-flight to 100
+        self._inflight_semaphore = threading.Semaphore(100)
 
     def run(self) -> Path:
         """Generates a zim for a single document.
@@ -200,7 +205,8 @@ class Processor:
         # Start creator early to detect problems early.
         with creator as creator:
             try:
-                creator.add_item_for(
+                self._add_item_for(
+                    creator,
                     "favicon.ico",
                     content=self._fetch_favicon_from_illustration(
                         zim_illustration
@@ -225,12 +231,36 @@ class Processor:
 
         return zim_path
 
+    def _add_item_for(
+        self, creator: Creator, path: str, title: str | None = None, **kwargs: Any
+    ) -> None:
+        """Wrapper for creator.add_item_for with backpressure.
+
+        Blocks when 100 items are already in-flight, releases a slot when
+        the item is finalized (garbage-collected by libzim).
+        """
+        self._inflight_semaphore.acquire()
+
+        existing_callbacks = kwargs.pop("callbacks", None)
+        callbacks: list[Callback] = []
+        if existing_callbacks is not None:
+            if isinstance(existing_callbacks, list):
+                callbacks.extend(
+                    existing_callbacks  # pyright: ignore[reportUnknownArgumentType]
+                )
+            else:
+                callbacks.append(existing_callbacks)
+        callbacks.append(Callback(func=self._inflight_semaphore.release))
+
+        creator.add_item_for(path, title, callbacks=callbacks, **kwargs)
+
     def run_with_creator(self, creator: Creator):
 
         context.current_thread_workitem = "standard files"
 
         logger.info("  Storing configuration...")
-        creator.add_item_for(
+        self._add_item_for(
+            creator,
             "content/config.json",
             content=ConfigModel(
                 secondary_color=self.zim_config.secondary_color,
@@ -260,7 +290,8 @@ class Processor:
             logger.debug(f"Adding {path} to ZIM")
             if path == "index.html":  # Change index.html title and add to ZIM
                 index_html_path = context.zimui_dist / path
-                creator.add_item_for(
+                self._add_item_for(
+                    creator,
                     path=path,
                     content=index_html_path.read_text(encoding="utf-8").replace(
                         "<title>Vite App</title>",
@@ -270,7 +301,8 @@ class Processor:
                     is_front=True,
                 )
             else:
-                creator.add_item_for(
+                self._add_item_for(
+                    creator,
                     path=path,
                     fpath=file,
                     is_front=False,
@@ -786,7 +818,8 @@ class Processor:
                         content = f.read()
                         # Transform path from ofm_f384/... to sprites/ofm_f384/...
                         zim_path = f"sprites/{member.name}"
-                        creator.add_item_for(
+                        self._add_item_for(
+                            creator,
                             path=zim_path,
                             content=content,
                         )
@@ -863,7 +896,8 @@ class Processor:
                         if relative_path.endswith(".json"):
                             relative_path = relative_path[:-5]
                         zim_path = f"styles/{relative_path}"
-                        creator.add_item_for(
+                        self._add_item_for(
+                            creator,
                             path=zim_path,
                             content=content,
                         )
@@ -1181,7 +1215,8 @@ class Processor:
                 dedupl_path = self._dedupl_helper_path(dedupl_id)
 
                 # Add to ZIM
-                creator.add_item_for(
+                self._add_item_for(
+                    creator,
                     path=f"dedupl/{dedupl_path}",
                     content=tile_data,
                     mimetype="application/x-protobuf",
@@ -1368,7 +1403,8 @@ class Processor:
 
             # Write TileJSON to ZIM
             tilejson_content = json.dumps(tilejson, ensure_ascii=False, indent=2)
-            creator.add_item_for(
+            self._add_item_for(
+                creator,
                 path="planet",
                 content=tilejson_content.encode("utf-8"),
                 mimetype="application/json",
@@ -1615,7 +1651,8 @@ class Processor:
         # Add CSS file to ZIM
         assets = resources.files("maps2zim") / "assets"
         styles_path = Path(str(assets / "styles.css"))
-        creator.add_item_for(
+        self._add_item_for(
+            creator,
             path="content/styles.css",
             fpath=styles_path,
             mimetype="text/css",
@@ -1648,7 +1685,8 @@ class Processor:
                 # Single place: create redirect
                 place = places[0]
                 redirect_html = self._create_redirect_html(place, root_prefix)
-                creator.add_item_for(
+                self._add_item_for(
+                    creator,
                     path=path,
                     content=redirect_html.encode("utf-8"),
                     mimetype="text/html",
@@ -1660,7 +1698,8 @@ class Processor:
                 disamb_html = self._create_disambiguation_html(
                     name, places, root_prefix
                 )
-                creator.add_item_for(
+                self._add_item_for(
+                    creator,
                     path=path,
                     content=disamb_html.encode("utf-8"),
                     mimetype="text/html",
@@ -1931,7 +1970,8 @@ class Processor:
         )
 
         # Add to ZIM
-        creator.add_item_for(
+        self._add_item_for(
+            creator,
             path="content/about.html",
             content=about_html.encode("utf-8"),
             mimetype="text/html",
