@@ -513,8 +513,9 @@ class Processor:
     def _write_natural_earth(self, creator: Creator):
         """Extract natural_earth from tar.gz and add to ZIM.
 
-        Extracts the cached natural_earth tar.gz file and adds all contents to the ZIM,
-        transforming paths from ofm/ne2sr/ to natural_earth/ne2sr/.
+        Extracts the cached natural_earth tar.gz file and adds only webp and JSON files
+        to the ZIM, transforming paths from ofm/ne2sr/ to natural_earth/ne2sr/.
+        Raises an error if no webp files are found.
         """
         natural_earth_tar_gz_path = context.assets_folder / "natural_earth.tar.gz"
 
@@ -524,23 +525,55 @@ class Processor:
         deduplicator = Deduplicator(creator)
         deduplicator.filters.append(re.compile(".*"))
 
+        # Track which file types we encounter
+        webp_count = 0
+        ignored_types: set[str] = set()
+
         # Extract and add natural_earth to ZIM
         with tarfile.open(natural_earth_tar_gz_path, "r:gz") as tar:
             for member in tar.getmembers():
                 if member.isfile():
-                    # Extract file content
-                    f = tar.extractfile(member)
-                    if f is not None:
-                        content = f.read()
-                        # Transform path from ofm/ne2sr/... to natural_earth/ne2sr/...
-                        relative_path = member.name.replace("ofm/ne2sr/", "", 1)
-                        zim_path = f"natural_earth/ne2sr/{relative_path}"
-                        deduplicator.add_item_for(
-                            path=zim_path,
-                            content=content,
-                        )
+                    # Get file extension to determine type
+                    file_ext = Path(member.name).suffix.lower()
 
-        logger.info("  Natural_earth added to ZIM")
+                    # Only process webp and JSON files
+                    if file_ext in (".webp", ".json"):
+                        # Extract file content
+                        f = tar.extractfile(member)
+                        if f is not None:
+                            content = f.read()
+                            # Transform path from ofm/ne2sr/... to
+                            # natural_earth/ne2sr/...
+                            relative_path = member.name.replace("ofm/ne2sr/", "", 1)
+                            zim_path = f"natural_earth/ne2sr/{relative_path}"
+                            deduplicator.add_item_for(
+                                path=zim_path,
+                                content=content,
+                            )
+                        # count webp files
+                        webp_count += 1 if file_ext == ".webp" else 0
+                    elif file_ext == ".png":
+                        # Silently ignore PNG files
+                        pass
+                    else:
+                        # Track other file types for warning
+                        ignored_types.add(file_ext)
+
+        # Warn about ignored file types
+        if ignored_types:
+            logger.warning(
+                "  Ignored natural_earth files with types: "
+                f"{', '.join(sorted(ignored_types))}"
+            )
+
+        # Raise error if no webp files were found
+        if webp_count == 0:
+            raise ValueError(
+                "No webp files found in natural_earth.tar.gz. "
+                "Cannot create ZIM without webp tiles."
+            )
+
+        logger.info(f"  Natural_earth added to ZIM ({webp_count} webp tiles)")
 
     def _fetch_geonames_zip(self):
         """Download and extract geonames data from ZIP if not already cached.
@@ -813,6 +846,11 @@ class Processor:
                             ).encode("utf-8")
                             content = content.replace(
                                 b"https://__TILEJSON_DOMAIN__", b"."
+                            )
+                            # Replace natural_earth PNG tiles with webp
+                            content = content.replace(
+                                b"natural_earth/ne2sr/{z}/{x}/{y}.png",
+                                b"natural_earth/ne2sr/{z}/{x}/{y}.webp",
                             )
 
                         # Transform path from ofm/... to styles/...
