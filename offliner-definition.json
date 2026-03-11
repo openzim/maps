@@ -125,6 +125,12 @@
       "title": "Stats Filename",
       "description": "Scraping progress file. Leave it as `/output/task_progress.json`",
       "pattern": "^/output/task_progress\\.json$"
+    },
+    "compress-tiles": {
+      "type": "boolean",
+      "required": false,
+      "title": "Compress Tiles",
+      "description": "Dev option: make tile compression optional. Default: False"
     }
   }
 }

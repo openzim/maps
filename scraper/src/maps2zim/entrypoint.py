@@ -215,7 +215,7 @@ def prepare_context(raw_args: list[str], tmpdir: str) -> None:
     parser.add_argument(
         "--compress-tiles",
         action="store_true",
-        help="NDev option: make tile compression optional. Default: False",
+        help="Dev option: make tile compression optional. Default: False",
         dest="compress_tiles",
     )
 
