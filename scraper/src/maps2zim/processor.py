@@ -987,14 +987,6 @@ class Processor:
                 # Skip if filtering is active and tile doesn't intersect
                 if tile_filter is not None and not tile_filter.tile_intersects(z, x, y):
                     # Log progress if more than 1 minute since last log
-                    current_time = time.time()
-                    if current_time - last_log_time > LOG_EVERY_SECONDS:
-                        logger.info(
-                            f"  Processed {i}/{total_tile_count} tiles "
-                            f"({i / total_tile_count * 100:.1f}%, "
-                            f"{len(written_dedup_ids)} unique dedup written)"
-                        )
-                        last_log_time = current_time
                     continue
 
                 # Construct paths
