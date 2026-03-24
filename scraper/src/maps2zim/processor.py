@@ -1548,7 +1548,7 @@ class Processor:
     <title>{place.label}</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="refresh" content="1;URL='{map_url}'" />
+    <meta http-equiv="refresh" content="0;URL='{map_url}'" />
     <link rel="stylesheet" href="{root_prefix}content/styles.css">
 </head>
 <body>
