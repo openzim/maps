@@ -821,6 +821,7 @@ class Processor:
             creator.add_item_for(
                 path=f"assets/{str(style.relative_to(assets))[:-5]}",
                 content=content,
+                mimetype="application/json",
             )
 
         logger.info("  Styles added to ZIM")
