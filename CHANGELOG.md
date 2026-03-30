@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Add map scale control (metric units) to display real-world distances at current zoom level (#46)
+- Toggle map scale units between metric and imperial when clicking the scale control (#77)
 
 ### Fixed
 

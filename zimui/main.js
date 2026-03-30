@@ -140,8 +140,8 @@ const parseUrlFragment = () => {
       return { url: toAbsolute(url) };
     },
   });
-
-  map.addControl(new ScaleControl({ unit: "metric" }), "bottom-right");
+  const scale = new ScaleControl({ unit: "metric" });
+  map.addControl(scale, "bottom-right");
 
   const setMapStyle = (styleName) => {
     map.setStyle(`./assets/${styleName}`, {
@@ -204,6 +204,17 @@ const parseUrlFragment = () => {
     if (hasConfigDefaults) {
       resetButton.style.display = "flex";
     }
+  });
+
+  const scaleElement = scale._container;
+  scaleElement.style.cursor = "pointer";
+  scaleElement.title = "Toggle unit: metric/imperial";
+
+  // Toggle scale unit on click
+  scaleElement.addEventListener("click", () => {
+    const currentUnit = scale.options.unit;
+    const newUnit = currentUnit === "metric" ? "imperial" : "metric";
+    scale.setUnit(newUnit);
   });
 
   // Reset button functionality
