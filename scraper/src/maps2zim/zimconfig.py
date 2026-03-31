@@ -2,6 +2,14 @@ from pydantic import BaseModel
 
 from maps2zim.errors import InvalidFormatError
 
+DEFAULT_TAGS: list[str] = [
+    "_sw:no",
+    "_ftindex:yes",
+    "_pictures:yes",
+    "_videos:no",
+    "_details:yes",
+]
+
 
 class ZimConfig(BaseModel):
     """Common configuration for building ZIM files."""
@@ -43,6 +51,13 @@ class ZimConfig(BaseModel):
                     f"valid placeholders are: {valid_placeholders}"
                 ) from e
 
+        formatted_tags = [fmt(tag) for tag in self.tags] if self.tags else []
+        # Build a dict of tag key -> tag value from default tags, then override
+        # with user-provided tags (key is the part before the colon).
+        merged: dict[str, str] = {}
+        for tag in DEFAULT_TAGS + formatted_tags:
+            key = tag.split(":")[0] if ":" in tag else tag
+            merged[key] = tag
         return ZimConfig(
             secondary_color=self.secondary_color,
             file_name=fmt(self.file_name),
@@ -54,5 +69,5 @@ class ZimConfig(BaseModel):
             long_description=(
                 fmt(self.long_description) if self.long_description else None
             ),
-            tags=[fmt(tag) for tag in self.tags] if self.tags else [],
+            tags=list(merged.values()),
         )

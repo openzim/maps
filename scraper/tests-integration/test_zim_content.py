@@ -93,3 +93,18 @@ def test_zim_content_planet_tilejson(zim_fh: Archive):
     assert "vector_layers" in planet_json
     assert "tiles" in planet_json
     assert planet_json["tiles"] == ["./tiles/{z}/{x}/{y}.pbf"]
+
+
+def test_zim_tags(zim_fh: Archive):
+    """Ensure proper content at planet TileJSON"""
+
+    tags = zim_fh.get_metadata("Tags").decode()
+
+    for expected_tag in [
+        "_sw:no",
+        "_ftindex:yes",
+        "_pictures:yes",
+        "_videos:no",
+        "_details:yes",
+    ]:
+        assert expected_tag in tags
