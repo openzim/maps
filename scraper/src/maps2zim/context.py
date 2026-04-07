@@ -48,7 +48,12 @@ class Context:
     output_folder: Path = Path(os.getenv("MAPS_OUTPUT", "output"))
 
     # folder where Vue.JS UI has been built
-    zimui_dist: Path = Path(os.getenv("MAPS_ZIMUI_DIST", "../zimui/dist"))
+    zimui_dist: Path = Path(
+        os.getenv(
+            "MAPS_ZIMUI_DIST",
+            str(Path(__file__).parent / "zimui"),
+        )
+    )
 
     # Path to store the progress JSON file to
     stats_filename: Path | None = None

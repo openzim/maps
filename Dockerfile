@@ -1,9 +1,9 @@
 FROM node:24-alpine AS zimui
 
 WORKDIR /src
-COPY zimui /src
-RUN yarn install --frozen-lockfile
-RUN yarn build
+COPY . /src
+RUN cd zimui && yarn install --frozen-lockfile
+RUN cd zimui && yarn build
 
 FROM python:3.14-bookworm
 LABEL org.opencontainers.image.source=https://github.com/openzim/maps
@@ -27,15 +27,14 @@ RUN pip install --no-cache-dir /src/scraper
 COPY scraper/src /src/scraper/src
 COPY *.md LICENSE /src/
 
+# Copy zimui build output
+COPY --from=zimui /src/scraper/src/maps2zim/zimui /src/scraper/src/maps2zim/zimui
+
 # Install + cleanup
 RUN pip install --no-cache-dir /src/scraper \
  && rm -rf /src/scraper
 
-# Copy zimui build output
-COPY --from=zimui /src/dist /src/zimui
-
-ENV MAPS_ZIMUI_DIST=/src/zimui \
-    MAPS_OUTPUT=/output \
+ENV MAPS_OUTPUT=/output \
     MAPS_TMP=/tmp\
     MAPS_CONTACT_INFO=https://www.kiwix.org
 

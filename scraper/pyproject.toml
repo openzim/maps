@@ -89,7 +89,7 @@ all = "inv checkall --args '{args}'"
 [tool.black]
 line-length = 88
 target-version = ['py314']
-exclude = "(src/maps2zim/templates/.*|.hatch/.*)"
+exclude = "(src/maps2zim/zimui/.*|.hatch/.*)"
 
 [tool.ruff]
 target-version = "py314"
@@ -212,7 +212,7 @@ exclude_lines = ["no cov", "if __name__ == .__main__.:", "if TYPE_CHECKING:"]
 
 [tool.pyright]
 include = ["src", "tests", "tasks.py"]
-exclude = [".env/**", ".venv/**", ".hatch"]
+exclude = [".env/**", ".venv/**", ".hatch", "src/maps2zim/zimui", ]
 extraPaths = ["src"]
 pythonVersion = "3.14"
 typeCheckingMode = "strict"

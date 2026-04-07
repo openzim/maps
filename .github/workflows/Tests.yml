@@ -98,6 +98,9 @@ jobs:
           wget -qO- https://download.openzim.org/release/zim-tools/zim-tools_linux-x86_64.tar.gz | tar xvz
           mv zim-tools_linux-x86_64-*/zim* /usr/local/bin/
 
+      - name: Ensure zimui and its files are present in Docker image
+        run: docker run --rm local-maps python -c "from pathlib import Path; import maps2zim; path = Path(maps2zim.__file__).parent / 'zimui'; assert (path / 'index.html').is_file() and (path / 'assets').is_dir(), 'zimui not found'"
+
       - name: Run scraper
         run: docker run -v $PWD/output:/output local-maps maps2zim --area monaco --geonames-region MC --name maps_en_test --title "Maps Test" --description "Test ZIM for maps" --file-name "tests_en_maps" --default-view=43.74,7.43,13
 

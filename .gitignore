@@ -319,3 +319,6 @@ extract
 
 # File(s) fetched by hatch-openzim plugin
 scraper/src/maps2zim/assets/mapbox-gl-rtl-text.js
+
+# Zimui build dist
+scraper/src/maps2zim/zimui/
