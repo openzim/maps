@@ -138,6 +138,7 @@ const parseUrlFragment = () => {
     container: "map",
     center: mapConfig.center,
     zoom: mapConfig.zoom,
+    maxZoom: 18,
     transformRequest: (url) => {
       return { url: toAbsolute(url) };
     },
