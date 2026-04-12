@@ -310,6 +310,14 @@ poetry.toml
 # LSP config files
 pyrightconfig.json
 
+# Private keys and credentials
+*.pem
+*.key
+*.p12
+*.pfx
+credentials.json
+service-account*.json
+
 # End of https://www.toptal.com/developers/gitignore/api/node,python
 
 .vscode
