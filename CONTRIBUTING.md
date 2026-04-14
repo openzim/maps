@@ -43,7 +43,8 @@ Compile UI and copy.
 ```
 cd zimui
 yarn build
-cp -r dist/* ../extract
+cd ../extract
+cp -r ../scraper/src/maps2zim/zimui/* .
 cd ..
 ```
 

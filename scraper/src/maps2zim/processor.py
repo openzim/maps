@@ -94,15 +94,6 @@ class Processor:
     def _run_internal(self) -> Path:
         logger.setLevel(level=logging.DEBUG if context.debug else logging.INFO)
 
-        if (
-            context.area != "planet" or context.include_poly_urls
-        ) and not context.default_view:
-            logger.warning(
-                "You should pass --default-view arg when using a custom --area or "
-                "--include_poly_urls value(s), so that default map displayed in the UI "
-                "is nice."
-            )
-
         self.zim_config = ZimConfig(
             file_name=context.file_name,
             name=context.name,
@@ -225,6 +216,17 @@ class Processor:
 
         context.current_thread_workitem = "standard files"
 
+        # Initialize tile filter early so we can use the bounding box in config.json
+        tile_filter: TileFilter | None = None
+        if context.include_poly_urls:
+            context.current_thread_workitem = "loading poly files"
+            logger.info("  Downloading and loading .poly file(s) for filtering")
+            tile_filter = TileFilter(context.include_poly_urls)
+            logger.info(
+                f"  Loaded {tile_filter.polygon_count} polygon(s) for filtering"
+            )
+            context.current_thread_workitem = "standard files"
+
         logger.info("  Storing configuration...")
         creator.add_item_for(
             "content/config.json",
@@ -238,6 +240,14 @@ class Processor:
                     else None
                 ),
                 zoom=context.default_view[2] if context.default_view else None,
+                bounding_box=(
+                    [
+                        [tile_filter.bounding_box[0], tile_filter.bounding_box[1]],
+                        [tile_filter.bounding_box[2], tile_filter.bounding_box[3]],
+                    ]
+                    if tile_filter and tile_filter.bounding_box
+                    else None
+                ),
             ).model_dump_json(by_alias=True, exclude_none=True),
         )
 
@@ -306,36 +316,6 @@ class Processor:
 
         context.current_thread_workitem = "tilejson"
         self._write_tilejson(creator)
-
-        # Initialize tile filter if poly files or zoom filtering is specified
-        tile_filter: TileFilter | None = None
-        if context.include_poly_urls or context.include_up_to_zoom is not None:
-            context.current_thread_workitem = "loading poly files"
-
-            # Validate include_up_to_zoom if specified
-            if context.include_up_to_zoom is not None:
-                max_zoom = self._get_mbtiles_maxzoom()
-                if context.include_up_to_zoom >= max_zoom:
-                    raise ValueError(
-                        f"--include_up_to_zoom ({context.include_up_to_zoom}) "
-                        f"must be less than the maximum zoom in mbtiles ({max_zoom})"
-                    )
-
-            if context.include_poly_urls:
-                logger.info("  Downloading and loading .poly file(s) for filtering")
-            tile_filter = TileFilter(
-                context.include_poly_urls or "",
-                max_zoom_no_filter=context.include_up_to_zoom,
-            )
-            if context.include_poly_urls:
-                logger.info(
-                    f"  Loaded {tile_filter.polygon_count} polygon(s) for filtering"
-                )
-            if context.include_up_to_zoom is not None:
-                logger.info(
-                    f"  Including all tiles up to zoom "
-                    f"level {context.include_up_to_zoom}"
-                )
 
         context.current_thread_workitem = "download places data"
         self._fetch_geonames_zip()

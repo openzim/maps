@@ -13,7 +13,7 @@
       "type": "string",
       "required": false,
       "title": "Default View",
-      "description": "Default map view as latitude,longitude,zoom (e.g. 46.51,6.63,14 for Kiwix headquarters). Sets the initial center and zoom level of the map when UI loads."
+      "description": "Default map view as latitude,longitude,zoom (e.g. 46.51,6.63,14 for Kiwix headquarters). Sets the initial center and zoom level of the map when UI loads. zoom value is optional, you can pass only latitude,longitude (map will be zoomed out as much as possible)."
     },
     "name": {
       "type": "string",
@@ -83,14 +83,6 @@
       "required": false,
       "title": "Illustration URL",
       "description": "URL to illustration to use for ZIM illustration and favicon"
-    },
-    "include_up_to_zoom": {
-      "type": "integer",
-      "required": false,
-      "title": "Include Up To Zoom",
-      "description": "Include all tiles up to this zoom level, ignoring any poly filtering",
-      "min": 1,
-      "max": 14
     },
     "debug": {
       "type": "boolean",

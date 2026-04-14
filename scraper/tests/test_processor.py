@@ -416,7 +416,8 @@ def test_parse_geonames_with_tile_filter():
             )
 
             tile_filter = TileFilter("")  # Create empty filter
-            tile_filter.unified_geometry = lyon_polygon
+            min_lon, min_lat, max_lon, max_lat = lyon_polygon.bounds
+            tile_filter.bounding_box = (min_lon, min_lat, max_lon, max_lat)
             tile_filter.polygon_count = 1
 
             # Create processor and parse geonames with filter

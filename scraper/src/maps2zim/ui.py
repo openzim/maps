@@ -13,3 +13,5 @@ class ConfigModel(CamelModel):
     zim_name: str | None = None
     center: list[float] | None = None
     zoom: float | None = None
+    # [[min_lon, min_lat], [max_lon, max_lat]]
+    bounding_box: list[list[float]] | None = None

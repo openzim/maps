@@ -16,26 +16,32 @@ from maps2zim.constants import (
 from maps2zim.context import MAPS_TMP, Context
 
 
-def parse_default_view(value: str) -> tuple[float, float, float]:
+def parse_default_view(value: str) -> tuple[float, float, float | None]:
     """Parse --default-view argument as latitude,longitude,zoom.
 
     Args:
-        value: comma-separated string of 3 floats
+        value: comma-separated string of 2 or 3 floats
 
     Returns:
         Tuple of (latitude, longitude, zoom) as floats
+        zoom can be None if not set
 
     Raises:
         argparse.ArgumentTypeError: if format is invalid
     """
     parts = value.split(",")
-    if len(parts) != 3:  # noqa: PLR2004
+    if len(parts) not in [2, 3]:
         raise argparse.ArgumentTypeError(
-            f"--default-view requires exactly 3 comma-separated values "
-            f"(latitude,longitude,zoom), got {len(parts)}"
+            "--default-view requires 2 or 3 comma-separated values "
+            "(latitude,longitude) or (latitude,longitude,zoom), got "
+            f"{len(parts)}"
         )
     try:
-        lat, lon, zoom = float(parts[0]), float(parts[1]), float(parts[2])
+        lat, lon, zoom = (
+            float(parts[0]),
+            float(parts[1]),
+            float(parts[2]) if len(parts) > 2 else None,  # noqa: PLR2004
+        )
     except ValueError:
         raise argparse.ArgumentTypeError(
             f"--default-view values must all be floats, got: {value!r}"
@@ -183,18 +189,12 @@ def prepare_context(raw_args: list[str], tmpdir: str) -> None:
     )
 
     parser.add_argument(
-        "--include_up_to_zoom",
-        type=int,
-        help="Include all tiles up to this zoom level, ignoring any poly filtering. "
-        f"Default: {Context.include_up_to_zoom}",
-        dest="include_up_to_zoom",
-    )
-
-    parser.add_argument(
         "--default-view",
         type=parse_default_view,
         help="Default map view as latitude,longitude,zoom (e.g. 43.731,7.416,12). "
-        "Sets the initial center and zoom level of the map when UI loads.",
+        "Sets the initial center and zoom level of the map when UI loads. zoom value "
+        "is optional, you can pass only latitude,longitude (map will be zoomed out as "
+        "much as possible).",
         dest="default_view",
     )
 

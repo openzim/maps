@@ -3,7 +3,7 @@
 import math
 from pathlib import Path
 
-from shapely.geometry import Point, Polygon
+from shapely.geometry import Polygon
 from shapely.ops import unary_union
 from zimscraperlib.download import save_large_file
 
@@ -33,6 +33,8 @@ def download_poly_file(url: str, dest_folder: Path) -> Path:
         filename = f"{filename}.poly"
 
     filepath = dest_folder / filename
+    if filepath.exists():
+        return filepath
 
     logger.debug(f"Downloading .poly file from {url}")
     save_large_file(url, fpath=filepath)
@@ -147,54 +149,58 @@ def tile_to_bbox(z: int, x: int, y: int) -> tuple[float, float, float, float]:
 
 
 class TileFilter:
-    """Filter tiles based on geographic regions from .poly files."""
+    """Filter tiles based on the bounding box of geographic regions from .poly files."""
 
-    def __init__(self, poly_urls: str, max_zoom_no_filter: int | None = None) -> None:
+    def __init__(self, poly_urls: str) -> None:
         """Initialize TileFilter from comma-separated .poly file URLs.
+
+        Computes the bounding box of all polygons and uses it for filtering.
 
         Args:
             poly_urls: Comma-separated URLs of .poly files to download and use
-            max_zoom_no_filter: Include all tiles up to this zoom level,
-                ignoring poly filtering. None means filter all zooms.
 
         Raises:
             ValueError: If no valid polygons are found
         """
-        self.polygons: list[Polygon] = []
-        self.unified_geometry: Polygon | None = None
         self.polygon_count = 0
-        self.max_zoom_no_filter = max_zoom_no_filter
+        # (min_lon, min_lat, max_lon, max_lat) or None if no filtering
+        self.bounding_box: tuple[float, float, float, float] | None = None
 
         if not poly_urls or not poly_urls.strip():
             return
 
         # Parse comma-separated URLs
         urls = [url.strip() for url in poly_urls.split(",")]
+        polygons: list[Polygon] = []
 
         # Download and parse each .poly file
         for url in urls:
             try:
                 poly_path = download_poly_file(url, context.tmp_folder)
                 polygon = parse_poly_file(poly_path)
-                self.polygons.append(polygon)
+                polygons.append(polygon)
                 logger.debug(f"Loaded polygon from {url}")
             except Exception as e:
                 logger.error(f"Failed to load .poly file from {url}: {e}")
                 raise
 
-        if self.polygons:
-            # Union all polygons into a single geometry for efficient
-            # intersection checks
-            if len(self.polygons) == 1:
-                self.unified_geometry = self.polygons[0]
+        if polygons:
+            if len(polygons) == 1:
+                unified = polygons[0]
             else:
-                self.unified_geometry = unary_union(self.polygons)  # type: ignore
-            self.polygon_count = len(self.polygons)
+                unified = unary_union(polygons)  # type: ignore
+            self.polygon_count = len(polygons)
 
-            logger.info(f"Loaded {self.polygon_count} polygon(s) for filtering")
+            min_lon, min_lat, max_lon, max_lat = unified.bounds
+            self.bounding_box = (min_lon, min_lat, max_lon, max_lat)
+
+            logger.info(
+                f"Loaded {self.polygon_count} polygon(s) for filtering, "
+                f"bounding box: {self.bounding_box}"
+            )
 
     def tile_intersects(self, z: int, x: int, y: int) -> bool:
-        """Check if a tile intersects with any of the loaded polygon regions.
+        """Check if a tile intersects with the bounding box of the loaded regions.
 
         Args:
             z: Zoom level
@@ -204,40 +210,28 @@ class TileFilter:
         Returns:
             True if tile should be included, False otherwise
         """
-        # Check if this zoom level should be included without filtering
-        if self.max_zoom_no_filter is not None and z <= self.max_zoom_no_filter:
+        if self.bounding_box is None:
             return True
 
-        # If no polygon filtering is active, include the tile
-        if self.unified_geometry is None:
-            return True
-
-        # Get tile bounding box
         west, south, east, north = tile_to_bbox(z, x, y)
+        min_lon, min_lat, max_lon, max_lat = self.bounding_box
 
-        # Create a box from the tile bounds
-        tile_box = Polygon(
-            [
-                (west, south),
-                (east, south),
-                (east, north),
-                (west, north),
-            ]
+        # Check if tile bbox overlaps with region bounding box
+        return not (
+            east < min_lon or west > max_lon or north < min_lat or south > max_lat
         )
 
-        # Check if tile intersects with any region
-        return tile_box.intersects(self.unified_geometry)
-
     def contains_point(self, lon: float, lat: float) -> bool:
-        """Check if a geographic point is within the loaded polygon regions.
+        """Check if a geographic point is within the bounding box of loaded regions.
 
         Args:
             lon: Longitude in degrees
             lat: Latitude in degrees
 
         Returns:
-            True if point is inside any region, or if no filtering is active.
+            True if point is inside the bounding box, or if no filtering is active.
         """
-        if self.unified_geometry is None:
+        if self.bounding_box is None:
             return True
-        return self.unified_geometry.contains(Point(lon, lat))
+        min_lon, min_lat, max_lon, max_lat = self.bounding_box
+        return min_lon <= lon <= max_lon and min_lat <= lat <= max_lat

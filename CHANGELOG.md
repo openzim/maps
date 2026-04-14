@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Create ZIM alias instead of redirects for tiles (#53)
 - Reduce number of alias for tiles to a strict minimum (#78)
 - Bundle ZIM UI inside pip package (#63)
+- Ensure map borders are consistent at all zoom levels (#90)
+- Homepage should focus on the proper location and zoom (#55)
 
 ## [0.1.1] - 2026-03-10
 

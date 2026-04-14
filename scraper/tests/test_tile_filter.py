@@ -125,23 +125,17 @@ def test_parse_poly_file_empty():
             parse_poly_file(poly_path)
 
 
-def test_tile_filter_zoom_no_filter():
-    """Test that tiles at or below max_zoom_no_filter are always included."""
-    # Create filter with max_zoom_no_filter=5
-    tile_filter = TileFilter("", max_zoom_no_filter=5)
+def test_tile_filter_no_filter():
+    """Test that a filter with no poly URLs includes all tiles."""
+    tile_filter = TileFilter("")
 
-    # Tiles at zoom 0-5 should be included
     assert tile_filter.tile_intersects(0, 0, 0) is True
-    assert tile_filter.tile_intersects(3, 2, 4) is True
-    assert tile_filter.tile_intersects(5, 10, 20) is True
-
-    # Tiles at zoom > 5 should also be included (no poly filtering)
-    assert tile_filter.tile_intersects(6, 30, 40) is True
     assert tile_filter.tile_intersects(10, 500, 500) is True
+    assert tile_filter.bounding_box is None
 
 
-def test_tile_filter_zoom_no_filter_with_poly():
-    """Test zoom filtering with polygon filtering."""
+def test_tile_filter_bounding_box():
+    """Test tile filtering based on bounding box derived from poly."""
     poly_content = """test_area
 test_polygon
     0.0    0.0
@@ -157,26 +151,21 @@ END
         poly_path = Path(tmpdir) / "test.poly"
         poly_path.write_text(poly_content)
 
-        # Mock the TileFilter by directly setting up the geometry
-        tile_filter = TileFilter("", max_zoom_no_filter=5)
+        tile_filter = TileFilter("")
         polygon = parse_poly_file(poly_path)
-        tile_filter.unified_geometry = polygon
+        min_lon, min_lat, max_lon, max_lat = polygon.bounds
+        tile_filter.bounding_box = (min_lon, min_lat, max_lon, max_lat)
         tile_filter.polygon_count = 1
 
-        # Tiles at zoom 0-5 should be included regardless of poly
-        assert tile_filter.tile_intersects(0, 0, 0) is True
-        assert tile_filter.tile_intersects(5, 5, 5) is True
-
-        # Tiles at zoom > 5 should be filtered by polygon
-        # Tile at zoom 10, column 512, row 512 is approximately at (0, 0)
-        # which should be inside the poly
-        assert tile_filter.tile_intersects(10, 512, 512) is True
-        # Tile far away should not intersect
+        # Bounding box is (0, 0, 1, 1) — tiles overlapping this region should pass
+        # Tile at zoom 10, ~(0,0) should intersect
+        assert tile_filter.tile_intersects(10, 512, 511) is True
+        # Tile far away (top-left of world) should not intersect
         assert tile_filter.tile_intersects(10, 0, 0) is False
 
 
 def test_tile_filter_contains_point():
-    """Test point-in-polygon filtering."""
+    """Test point-in-bounding-box filtering."""
     poly_content = """test_area
 test_polygon
     0.0    0.0
@@ -192,25 +181,25 @@ END
         poly_path = Path(tmpdir) / "test.poly"
         poly_path.write_text(poly_content)
 
-        # Create filter and inject polygon (avoid downloading)
         tile_filter = TileFilter("")
         polygon = parse_poly_file(poly_path)
-        tile_filter.unified_geometry = polygon
+        min_lon, min_lat, max_lon, max_lat = polygon.bounds
+        tile_filter.bounding_box = (min_lon, min_lat, max_lon, max_lat)
         tile_filter.polygon_count = 1
 
-        # Test points inside the polygon
+        # Points inside the bounding box
         assert tile_filter.contains_point(0.5, 0.5) is True
         assert tile_filter.contains_point(0.25, 0.75) is True
         assert tile_filter.contains_point(0.1, 0.1) is True
 
-        # Test points outside the polygon
+        # Points outside the bounding box
         assert tile_filter.contains_point(-0.5, 0.5) is False
         assert tile_filter.contains_point(1.5, 0.5) is False
         assert tile_filter.contains_point(0.5, -0.5) is False
         assert tile_filter.contains_point(2.0, 2.0) is False
 
-        # Test with no geometry set (should always return True)
-        tile_filter_no_geo = TileFilter("")
-        assert tile_filter_no_geo.contains_point(0.5, 0.5) is True
-        assert tile_filter_no_geo.contains_point(-180.0, -90.0) is True
-        assert tile_filter_no_geo.contains_point(180.0, 90.0) is True
+        # Test with no bounding box (should always return True)
+        tile_filter_no_bounds = TileFilter("")
+        assert tile_filter_no_bounds.contains_point(0.5, 0.5) is True
+        assert tile_filter_no_bounds.contains_point(-180.0, -90.0) is True
+        assert tile_filter_no_bounds.contains_point(180.0, 90.0) is True

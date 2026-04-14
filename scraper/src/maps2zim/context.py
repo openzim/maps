@@ -106,12 +106,8 @@ class Context:
     # Comma-separated URLs of .poly files defining regions to include tiles from
     include_poly_urls: str | None = None
 
-    # Include all tiles up to this zoom level, ignoring poly filtering
-    # Default is 6 (only 4096 tiles globally)
-    include_up_to_zoom: int | None = 6
-
     # Default map view: (latitude, longitude, zoom)
-    default_view: tuple[float, float, float] | None = None
+    default_view: tuple[float, float, float | None] | None = None
 
     # Geonames region to download (e.g. "allCountries", "FR", "US")
     geonames_region: str = "allCountries"

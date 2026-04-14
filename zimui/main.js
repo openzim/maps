@@ -75,10 +75,9 @@ const parseUrlFragment = () => {
 
 // Load config and initialize map
 (async () => {
-  let mapConfig = { center: [0, 0], zoom: 0 };
-  let defaultCenter = [0, 0];
-  let defaultZoom = 0;
-  let hasConfigDefaults = false;
+  let defaultCenter = undefined;
+  let defaultZoom = undefined;
+  let mapConfig = { center: undefined, zoom: undefined, bounds: undefined };
   let zimName = null;
   let storageKey = null;
 
@@ -98,11 +97,12 @@ const parseUrlFragment = () => {
     // Store default center and zoom from config
     if (config.center) {
       defaultCenter = config.center;
-      hasConfigDefaults = true;
     }
     if (config.zoom !== undefined) {
       defaultZoom = config.zoom;
-      hasConfigDefaults = true;
+    }
+    if (config.boundingBox) {
+      mapConfig.bounds = config.boundingBox;
     }
 
     // Check for URL fragment parameters (highest priority)
@@ -121,7 +121,7 @@ const parseUrlFragment = () => {
         }
       }
 
-      // Use saved view if available, otherwise use config values
+      // Use saved view if available, otherwise use default values
       if (savedView && savedView.center && savedView.zoom !== undefined) {
         mapConfig.center = savedView.center;
         mapConfig.zoom = savedView.zoom;
@@ -136,13 +136,29 @@ const parseUrlFragment = () => {
 
   const map = new Map({
     container: "map",
-    center: mapConfig.center,
-    zoom: mapConfig.zoom,
     maxZoom: 18,
     transformRequest: (url) => {
       return { url: toAbsolute(url) };
     },
   });
+
+  window.__openzim_map = map; // Save in window, useful for debug purposes
+
+  if (mapConfig.bounds !== undefined) {
+    console.log(`Setting bounds to ${mapConfig.bounds}`);
+    map.setMaxBounds(mapConfig.bounds);
+  }
+
+  if (mapConfig.zoom !== undefined) {
+    console.log(`Setting zoom to ${mapConfig.zoom}`);
+    map.setZoom(mapConfig.zoom);
+  }
+
+  if (mapConfig.center !== undefined) {
+    console.log(`Setting center to ${mapConfig.center}`);
+    map.setCenter(mapConfig.center);
+  }
+
   const scale = new ScaleControl({ unit: "metric" });
   map.addControl(scale, "bottom-right");
 
@@ -204,7 +220,7 @@ const parseUrlFragment = () => {
   // Show button container and reset button only after map loads if config has defaults
   map.on("load", () => {
     buttonContainer.classList.add("visible");
-    if (hasConfigDefaults) {
+    if (defaultCenter !== undefined) {
       resetButton.style.display = "flex";
     }
   });
@@ -222,15 +238,63 @@ const parseUrlFragment = () => {
 
   // Reset button functionality
   resetButton.addEventListener("click", () => {
-    map.flyTo({
-      center: defaultCenter,
-      zoom: defaultZoom,
-      duration: 1000,
-    });
+    if (defaultCenter !== undefined) {
+      if (defaultZoom !== undefined) {
+        map.flyTo({
+          center: defaultCenter,
+          zoom: defaultZoom,
+          duration: 1000,
+        });
+      } else {
+        // zoom-out as much as possible while keeping expected center
+        map.fitBounds(map.getMaxBounds(), {
+          center: defaultCenter,
+          duration: 1000,
+        });
+      }
+    }
   });
 
   // About button functionality
   aboutButton.addEventListener("click", () => {
     window.location.href = toAbsolute("./content/about.html");
   });
+
+  // Debounce function for updating coordinates
+  const debounce = (func, wait) => {
+    let timeout;
+    return function executedFunction(...args) {
+      const later = () => {
+        window.clearTimeout(timeout);
+        func(...args);
+      };
+      window.clearTimeout(timeout);
+      timeout = window.setTimeout(later, wait);
+    };
+  };
+
+  // Update coordinates display and save view to localStorage
+  const updateCoordinates = () => {
+    const center = map.getCenter();
+
+    // Save current view to localStorage if we have a storage key
+    if (storageKey) {
+      try {
+        const view = {
+          center: [center.lng, center.lat],
+          zoom: map.getZoom(),
+        };
+        window.localStorage.setItem(storageKey, JSON.stringify(view));
+      } catch (e) {
+        console.warn("Could not save view to localStorage:", e);
+      }
+    }
+  };
+
+  // Debounced update function (100ms delay)
+  const debouncedUpdateCoordinates = debounce(updateCoordinates, 100);
+
+  // Listen to map move and zoom events
+  map.on("move", debouncedUpdateCoordinates);
+  map.on("zoom", debouncedUpdateCoordinates);
 })();
