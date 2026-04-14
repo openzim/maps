@@ -75,6 +75,24 @@ const toAbsolute = (url) => {
   }
 };
 
+const flyTo = (map, center, zoom) => {
+  if (center !== undefined) {
+    if (zoom !== undefined) {
+      map.flyTo({
+        center: center,
+        zoom: zoom,
+        duration: 1000,
+      });
+    } else {
+      // zoom-out as much as possible while keeping expected center
+      map.fitBounds(map.getMaxBounds(), {
+        center: center,
+        duration: 1000,
+      });
+    }
+  }
+};
+
 // Parse URL fragment parameters for lat, lon, zoom
 const parseUrlFragment = () => {
   const fragment = window.location.hash.substring(1);
@@ -203,18 +221,7 @@ const parseUrlFragment = () => {
   window.__openzim_map = map; // Save in window, useful for debug purposes
 
   if (mapConfig.bounds !== undefined) {
-    console.log(`Setting bounds to ${mapConfig.bounds}`);
     map.setMaxBounds(mapConfig.bounds);
-  }
-
-  if (mapConfig.zoom !== undefined) {
-    console.log(`Setting zoom to ${mapConfig.zoom}`);
-    map.setZoom(mapConfig.zoom);
-  }
-
-  if (mapConfig.center !== undefined) {
-    console.log(`Setting center to ${mapConfig.center}`);
-    map.setCenter(mapConfig.center);
   }
 
   const scale = new ScaleControl({ unit: "metric" });
@@ -281,6 +288,12 @@ const parseUrlFragment = () => {
     if (defaultCenter !== undefined) {
       resetButton.style.display = "flex";
     }
+    flyTo(map, mapConfig.center, mapConfig.zoom);
+    // This is a bug, but for some reason sometimes the first flyTo doesn't work
+    // and when we retry 1 second later "it works"
+    setTimeout(() => {
+      flyTo(map, mapConfig.center, mapConfig.zoom);
+    }, 1000);
   });
 
   const scaleElement = scale._container;
@@ -296,21 +309,7 @@ const parseUrlFragment = () => {
 
   // Reset button functionality
   resetButton.addEventListener("click", () => {
-    if (defaultCenter !== undefined) {
-      if (defaultZoom !== undefined) {
-        map.flyTo({
-          center: defaultCenter,
-          zoom: defaultZoom,
-          duration: 1000,
-        });
-      } else {
-        // zoom-out as much as possible while keeping expected center
-        map.fitBounds(map.getMaxBounds(), {
-          center: defaultCenter,
-          duration: 1000,
-        });
-      }
-    }
+    flyTo(map, defaultCenter, defaultZoom);
   });
 
   // About button functionality
