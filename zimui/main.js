@@ -153,6 +153,7 @@ const parseUrlFragment = () => {
   let mapConfig = { center: undefined, zoom: undefined, bounds: undefined };
   let zimName = null;
   let storageKey = null;
+  let maxZoom = 18;
 
   try {
     const response = await fetch("./content/config.json");
@@ -176,6 +177,9 @@ const parseUrlFragment = () => {
     }
     if (config.boundingBox) {
       mapConfig.bounds = config.boundingBox;
+    }
+    if (config.maxZoom !== undefined) {
+      maxZoom = config.maxZoom;
     }
 
     // Check for URL fragment parameters (highest priority)
@@ -212,7 +216,7 @@ const parseUrlFragment = () => {
 
   const map = new Map({
     container: "map",
-    maxZoom: 18,
+    maxZoom: maxZoom,
     transformRequest: (url) => {
       return { url: toAbsolute(url) };
     },

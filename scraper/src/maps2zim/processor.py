@@ -250,6 +250,7 @@ class Processor:
                     if tile_filter and tile_filter.bounding_box
                     else None
                 ),
+                max_zoom=context.max_zoom,
             ).model_dump_json(by_alias=True, exclude_none=True),
         )
 
@@ -926,6 +927,10 @@ class Processor:
                 # Update progress (at the beginning for adequate values)
                 self.stats_items_done += 1
                 run_pending()
+
+                # Skip if tile zoom level exceeds configured maximum
+                if context.max_zoom is not None and z > context.max_zoom:
+                    continue
 
                 # Skip if filtering is active and tile doesn't intersect
                 if tile_filter is not None and not tile_filter.tile_intersects(z, x, y):

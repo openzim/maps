@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add map scale control (metric units) to display real-world distances at current zoom level (#46)
 - Toggle map scale units between metric and imperial when clicking the scale control (#77)
 - Add default ZIM tags based on Kiwix convention (#76)
+- Add --max-zoom to configure maximum zoom level of tiles to include in the ZIM (#84)
 
 ### Fixed
 
