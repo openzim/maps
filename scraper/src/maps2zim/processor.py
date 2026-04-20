@@ -1438,21 +1438,22 @@ class Processor:
                 self._report_progress()
                 last_log_time = current_time
 
-            path = f"search/{name}"
-            root_prefix = "../" * path.count("/")
-            if len(places) == 1:
-                # Single place: create redirect
-                place = places[0]
+            for place in places:
+                # Create one HTML redirect per place
+                path = f"search/{place.label}"
+                root_prefix = "../" * path.count("/")
                 redirect_html = self._create_redirect_html(place, root_prefix)
                 creator.add_item_for(
                     path=path,
                     content=redirect_html.encode("utf-8"),
                     mimetype="text/html",
-                    title=name,
+                    title=place.label,
                 )
                 redirect_count += 1
-            else:
+            if len(places) > 1:
                 # Multiple places: create disambiguation page
+                path = f"search/{name} (disambiguation)"
+                root_prefix = "../" * path.count("/")
                 disamb_html = self._create_disambiguation_html(
                     name, places, root_prefix
                 )
@@ -1460,10 +1461,9 @@ class Processor:
                     path=path,
                     content=disamb_html.encode("utf-8"),
                     mimetype="text/html",
-                    title=name,
+                    title=f"{name} (disambiguation)",
                 )
                 disamb_count += 1
-
         logger.info(
             f"  Added {redirect_count} redirects and {disamb_count} "
             f"disambiguation pages"
