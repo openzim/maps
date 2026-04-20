@@ -34,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fix prettier and eslint check in zimui QA CI (#85)
 - Do not create a full-text index (#91)
 - Add all possibilites in suggestion index when disambiguation page is used (#92)
+- Fix logic computing label for places discrimination (#93)
 
 ## [0.1.1] - 2026-03-10
 

@@ -35,16 +35,16 @@ def test_compute_discriminating_labels_single_place():
     assert place.label == original_label
 
 
-def test_compute_discriminating_labels_rumilly_french_example():
-    """Test the Rumilly example with realistic French data.
+def test_compute_discriminating_labels_same_country():
+    """Test the case with two cities in same country.
 
     Two French Rumilly places with different administrative hierarchies:
-    - Rumilly in Haute-Savoie → Auvergne-Rhône-Alpes
-    - Rumilly in Pas-de-Calais → Hauts-de-France
+    - Rumilly → Haute-Savoie → Auvergne-Rhône-Alpes
+    - Rumilly → Pas-de-Calais → Hauts-de-France
 
-    Expected labels (with full hierarchy including country):
-    - Rumilly, Haute-Savoie, Auvergne-Rhône-Alpes, France
-    - Rumilly, Pas-de-Calais, Hauts-de-France, France
+    Expected labels:
+    - Rumilly, Auvergne-Rhône-Alpes
+    - Rumilly, Hauts-de-France
     """
     # ADM1 (regional level)
     auvergne = SearchPlace(
@@ -132,45 +132,88 @@ def test_compute_discriminating_labels_rumilly_french_example():
     )
 
     # Verify labels include full hierarchy with country
-    assert rumilly1.label == "Rumilly, Haute-Savoie, Auvergne-Rhône-Alpes, France"
-    assert rumilly2.label == "Rumilly, Pas-de-Calais, Hauts-de-France, France"
+    assert rumilly1.label == "Rumilly, Auvergne-Rhône-Alpes"
+    assert rumilly2.label == "Rumilly, Hauts-de-France"
 
 
 def test_compute_discriminating_labels_different_countries():
-    """Test places with same name in different countries."""
-    # Countries
-    france = SearchPlace(
-        geoname_id="france",
-        latitude=46,
-        longitude=2,
+    """Test places with the same name in different countries use ADM1 to discriminate.
+
+    Two "Neustadt" places with full ADM1/ADM2/ADM3 hierarchies in different countries:
+    - Neustadt → Alsace-Bossue (ADM3) → Bas-Rhin (ADM2) → Grand Est (ADM1) [FR]
+    - Neustadt → Heidelberg (ADM3) → Rhein-Neckar-Kreis (ADM2) →
+      Baden-Württemberg (ADM1) [DE]
+
+    Expected labels: "Neustadt, Grand Est" and "Neustadt, Baden-Württemberg".
+    """
+    grand_est = SearchPlace(
+        geoname_id="grand_est",
+        latitude=48.5,
+        longitude=7.0,
         zoom=6,
-        label="France",
+        label="Grand Est",
         feature_code="ADM1",
         country_code="FR",
     )
-    germany = SearchPlace(
-        geoname_id="germany",
-        latitude=51,
-        longitude=10,
-        zoom=6,
-        label="Germany",
-        feature_code="ADM1",
-        country_code="DE",
+    bas_rhin = SearchPlace(
+        geoname_id="bas_rhin",
+        latitude=48.5,
+        longitude=7.5,
+        zoom=8,
+        label="Bas-Rhin",
+        feature_code="ADM2",
+        country_code="FR",
     )
-
+    alsace_bossue = SearchPlace(
+        geoname_id="alsace_bossue",
+        latitude=48.8,
+        longitude=7.1,
+        zoom=10,
+        label="Alsace-Bossue",
+        feature_code="ADM3",
+        country_code="FR",
+    )
     place_fr = SearchPlace(
         geoname_id="pfr",
-        latitude=45,
-        longitude=2,
+        latitude=48.85,
+        longitude=7.1,
         zoom=12,
         label="Neustadt",
         feature_code="ADM4",
         country_code="FR",
     )
+
+    baden_wuerttemberg = SearchPlace(
+        geoname_id="baden_wuerttemberg",
+        latitude=48.5,
+        longitude=9.0,
+        zoom=6,
+        label="Baden-Württemberg",
+        feature_code="ADM1",
+        country_code="DE",
+    )
+    rhein_neckar = SearchPlace(
+        geoname_id="rhein_neckar",
+        latitude=49.4,
+        longitude=8.7,
+        zoom=8,
+        label="Rhein-Neckar-Kreis",
+        feature_code="ADM2",
+        country_code="DE",
+    )
+    heidelberg = SearchPlace(
+        geoname_id="heidelberg_adm3",
+        latitude=49.4,
+        longitude=8.7,
+        zoom=10,
+        label="Heidelberg",
+        feature_code="ADM3",
+        country_code="DE",
+    )
     place_de = SearchPlace(
         geoname_id="pde",
-        latitude=51,
-        longitude=10,
+        latitude=49.38,
+        longitude=8.72,
         zoom=12,
         label="Neustadt",
         feature_code="ADM4",
@@ -179,14 +222,22 @@ def test_compute_discriminating_labels_different_countries():
 
     places_dict = {"Neustadt": [place_fr, place_de]}
     id_to_place = {
-        "france": france,
-        "germany": germany,
+        "grand_est": grand_est,
+        "bas_rhin": bas_rhin,
+        "alsace_bossue": alsace_bossue,
         "pfr": place_fr,
+        "baden_wuerttemberg": baden_wuerttemberg,
+        "rhein_neckar": rhein_neckar,
+        "heidelberg_adm3": heidelberg,
         "pde": place_de,
     }
     child_to_parent = {
-        "pfr": "france",
-        "pde": "germany",
+        "pfr": "alsace_bossue",
+        "alsace_bossue": "bas_rhin",
+        "bas_rhin": "grand_est",
+        "pde": "heidelberg_adm3",
+        "heidelberg_adm3": "rhein_neckar",
+        "rhein_neckar": "baden_wuerttemberg",
     }
     iso_to_country = {"FR": "France", "DE": "Germany"}
 
@@ -194,192 +245,240 @@ def test_compute_discriminating_labels_different_countries():
         places_dict, id_to_place, child_to_parent, iso_to_country
     )
 
-    # Labels include hierarchy (France and Germany are already in the chain, so no
-    # duplication)
     assert place_fr.label == "Neustadt, France"
     assert place_de.label == "Neustadt, Germany"
 
 
-def test_compute_discriminating_labels_multiple_levels():
-    """Test with deep hierarchy (multiple administrative levels)."""
-    auvergne = SearchPlace(
-        geoname_id="auvergne",
-        latitude=45.5,
-        longitude=3,
-        zoom=6,
-        label="Auvergne-Rhône-Alpes",
-        feature_code="ADM1",
-        country_code="FR",
-    )
-    haute_savoie = SearchPlace(
-        geoname_id="haute_savoie",
-        latitude=45.8,
-        longitude=6.5,
-        zoom=8,
-        label="Haute-Savoie",
-        feature_code="ADM2",
-        country_code="FR",
-    )
-    arrondissement = SearchPlace(
-        geoname_id="arrondissement",
-        latitude=45.8,
-        longitude=6.3,
-        zoom=10,
-        label="Arrondissement d'Annecy",
-        feature_code="ADM3",
-        country_code="FR",
-    )
-    cantons = [
-        SearchPlace(
-            geoname_id="canton1",
-            latitude=45.75,
-            longitude=6.1,
-            zoom=12,
-            label="Canton de Rumilly",
-            feature_code="ADM4",
-            country_code="FR",
-        ),
-        SearchPlace(
-            geoname_id="canton2",
-            latitude=45.85,
-            longitude=6.5,
-            zoom=12,
-            label="Canton d'Annecy",
-            feature_code="ADM4",
-            country_code="FR",
-        ),
-    ]
+def test_compute_discriminating_labels_different_countries_no_hierarchy():
+    """Test places with the same name in different countries fall back to country name.
 
-    places_dict = {"Rumilly": cantons}
-    id_to_place = {
-        "auvergne": auvergne,
-        "haute_savoie": haute_savoie,
-        "arrondissement": arrondissement,
-        "canton1": cantons[0],
-        "canton2": cantons[1],
-    }
-    child_to_parent = {
-        "canton1": "arrondissement",
-        "canton2": "arrondissement",
-        "arrondissement": "haute_savoie",
-        "haute_savoie": "auvergne",
-    }
-    iso_to_country = {"FR": "France"}
-
-    Processor._compute_discriminating_labels(  # pyright: ignore[reportPrivateUsage]
-        places_dict, id_to_place, child_to_parent, iso_to_country
-    )
-
-    # Full hierarchy including country
-    assert (
-        cantons[0].label == "Canton de Rumilly, Arrondissement d'Annecy, Haute-Savoie,"
-        " Auvergne-Rhône-Alpes, France"
-    )
-    assert (
-        cantons[1].label == "Canton d'Annecy, Arrondissement d'Annecy, Haute-Savoie, "
-        "Auvergne-Rhône-Alpes, France"
-    )
-
-
-def test_compute_discriminating_labels_no_hierarchy():
-    """Test with empty hierarchy (no parent links found)."""
-    place1 = SearchPlace(
-        geoname_id="p1",
-        latitude=45,
-        longitude=5,
-        zoom=12,
-        label="Paris",
-        feature_code="ADM4",
-        country_code="FR",
-    )
-    place2 = SearchPlace(
-        geoname_id="p2",
-        latitude=48,
-        longitude=0,
-        zoom=12,
-        label="Paris",
-        feature_code="ADM4",
-        country_code="FR",
-    )
-
-    places_dict = {"Paris": [place1, place2]}
-    id_to_place = {
-        "p1": place1,
-        "p2": place2,
-    }
-    child_to_parent: dict[str, str] = {}  # No hierarchy
-    iso_to_country = {"FR": "France"}
-
-    # Should not crash, labels stay as-is since no ancestors found to disambiguate
-    Processor._compute_discriminating_labels(  # pyright: ignore[reportPrivateUsage]
-        places_dict, id_to_place, child_to_parent, iso_to_country
-    )
-
-    # Without hierarchy, no disambiguation possible, labels remain unchanged
-    assert place1.label == "Paris"
-    assert place2.label == "Paris"
-
-
-def test_compute_discriminating_labels_no_country_info():
-    """Test with empty country info (no country name lookup)."""
-    france = SearchPlace(
-        geoname_id="france",
-        latitude=46,
-        longitude=2,
-        zoom=6,
-        label="France",
-        feature_code="ADM1",
-        country_code="FR",
-    )
-    germany = SearchPlace(
-        geoname_id="germany",
-        latitude=51,
-        longitude=10,
-        zoom=6,
-        label="Germany",
-        feature_code="ADM1",
-        country_code="DE",
-    )
+    Two "Neustadt" places with no hierarchy — only country codes available.
+    Expected labels: "Neustadt, France" and "Neustadt, Germany".
+    """
     place_fr = SearchPlace(
-        geoname_id="p1",
-        latitude=45,
-        longitude=5,
+        geoname_id="pfr",
+        latitude=48.85,
+        longitude=7.1,
         zoom=12,
-        label="Lyon",
+        label="Neustadt",
         feature_code="ADM4",
         country_code="FR",
     )
     place_de = SearchPlace(
-        geoname_id="p2",
-        latitude=51,
-        longitude=10,
+        geoname_id="pde",
+        latitude=49.38,
+        longitude=8.72,
         zoom=12,
-        label="Lyon",
+        label="Neustadt",
         feature_code="ADM4",
         country_code="DE",
     )
 
-    places_dict = {"Lyon": [place_fr, place_de]}
-    id_to_place = {
-        "france": france,
-        "germany": germany,
-        "p1": place_fr,
-        "p2": place_de,
-    }
-    child_to_parent = {
-        "p1": "france",
-        "p2": "germany",
-    }
-    iso_to_country: dict[str, str] = {}  # No country info
+    places_dict = {"Neustadt": [place_fr, place_de]}
+    id_to_place = {"pfr": place_fr, "pde": place_de}
+    child_to_parent: dict[str, str] = {}
+    iso_to_country = {"FR": "France", "DE": "Germany"}
 
     Processor._compute_discriminating_labels(  # pyright: ignore[reportPrivateUsage]
         places_dict, id_to_place, child_to_parent, iso_to_country
     )
 
-    # With hierarchy but no country info lookup, just the hierarchy (countries are
-    # already ancestors)
-    assert place_fr.label == "Lyon, France"
-    assert place_de.label == "Lyon, Germany"
+    assert place_fr.label == "Neustadt, France"
+    assert place_de.label == "Neustadt, Germany"
+
+
+def test_compute_discriminating_labels_missing_country_info():
+    """Test fallback to hierarchy when iso_to_country is missing for one country.
+
+    Three "Neustadt" places:
+    - Neustadt [FR]: no hierarchy, FR known → "Neustadt, France"
+    - Neustadt [DE] in Rhein-Neckar-Kreis → Baden-Württemberg: DE missing from
+      iso_to_country, ADM1 shared with next city → falls back to ADM2 →
+      "Neustadt, Rhein-Neckar-Kreis"
+    - Neustadt [DE] in Stuttgart → Baden-Württemberg: same ADM1, different ADM2 →
+      "Neustadt, Stuttgart"
+    """
+    place_fr = SearchPlace(
+        geoname_id="pfr",
+        latitude=48.85,
+        longitude=7.1,
+        zoom=12,
+        label="Neustadt",
+        feature_code="ADM4",
+        country_code="FR",
+    )
+    place_de1 = SearchPlace(
+        geoname_id="pde1",
+        latitude=49.38,
+        longitude=8.72,
+        zoom=12,
+        label="Neustadt",
+        feature_code="ADM4",
+        country_code="DE",
+    )
+    place_de2 = SearchPlace(
+        geoname_id="pde2",
+        latitude=48.77,
+        longitude=9.18,
+        zoom=12,
+        label="Neustadt",
+        feature_code="ADM4",
+        country_code="DE",
+    )
+    baden_wuerttemberg = SearchPlace(
+        geoname_id="bw",
+        latitude=48.5,
+        longitude=9.0,
+        zoom=6,
+        label="Baden-Württemberg",
+        feature_code="ADM1",
+        country_code="DE",
+    )
+    rhein_neckar = SearchPlace(
+        geoname_id="rhein_neckar",
+        latitude=49.4,
+        longitude=8.7,
+        zoom=8,
+        label="Rhein-Neckar-Kreis",
+        feature_code="ADM2",
+        country_code="DE",
+    )
+    stuttgart = SearchPlace(
+        geoname_id="stuttgart_adm2",
+        latitude=48.77,
+        longitude=9.18,
+        zoom=8,
+        label="Stuttgart",
+        feature_code="ADM2",
+        country_code="DE",
+    )
+
+    places_dict = {"Neustadt": [place_fr, place_de1, place_de2]}
+    id_to_place = {
+        "pfr": place_fr,
+        "pde1": place_de1,
+        "pde2": place_de2,
+        "bw": baden_wuerttemberg,
+        "rhein_neckar": rhein_neckar,
+        "stuttgart_adm2": stuttgart,
+    }
+    child_to_parent = {
+        "pde1": "rhein_neckar",
+        "rhein_neckar": "bw",
+        "pde2": "stuttgart_adm2",
+        "stuttgart_adm2": "bw",
+    }
+    iso_to_country = {"FR": "France"}  # DE deliberately missing
+
+    Processor._compute_discriminating_labels(  # pyright: ignore[reportPrivateUsage]
+        places_dict, id_to_place, child_to_parent, iso_to_country
+    )
+
+    assert place_fr.label == "Neustadt, France"
+    assert place_de1.label == "Neustadt, Rhein-Neckar-Kreis"
+    assert place_de2.label == "Neustadt, Stuttgart"
+
+
+def test_compute_discriminating_labels_ancestry_relationship():
+    """Test ADM-level tagging when one place is an ancestor of another.
+
+    "Rumilly" exists as both an ADM3 district and an ADM4 city inside that district.
+    Because they are in an ancestor/descendant relationship, hierarchy disambiguation
+    is useless — both share the same ancestry. They are tagged with their ADM level:
+    - "Rumilly (district)"
+    - "Rumilly (city)"
+    """
+    rumilly_adm3 = SearchPlace(
+        geoname_id="rumilly_adm3",
+        latitude=45.87,
+        longitude=5.94,
+        zoom=10,
+        label="Rumilly",
+        feature_code="ADM3",
+        country_code="FR",
+    )
+    rumilly_adm4 = SearchPlace(
+        geoname_id="rumilly_adm4",
+        latitude=45.87,
+        longitude=5.94,
+        zoom=12,
+        label="Rumilly",
+        feature_code="ADM4",
+        country_code="FR",
+    )
+
+    places_dict = {"Rumilly": [rumilly_adm3, rumilly_adm4]}
+    id_to_place = {
+        "rumilly_adm3": rumilly_adm3,
+        "rumilly_adm4": rumilly_adm4,
+    }
+    # ADM4 is a child of ADM3
+    child_to_parent = {"rumilly_adm4": "rumilly_adm3"}
+    iso_to_country = {"FR": "France"}
+
+    Processor._compute_discriminating_labels(  # pyright: ignore[reportPrivateUsage]
+        places_dict, id_to_place, child_to_parent, iso_to_country
+    )
+
+    assert rumilly_adm3.label == "Rumilly (district)"
+    assert rumilly_adm4.label == "Rumilly (city)"
+
+
+def test_compute_discriminating_labels_ancestry_relationship_adm1_adm3():
+    """Test ADM-level tagging when ADM1 and ADM3 share the same name in one chain.
+
+    "Alsace" exists as both an ADM1 region and an ADM3 district inside that region
+    (with an ADM2 in between). They are tagged with their ADM level:
+    - "Alsace (region)"
+    - "Alsace (district)"
+    """
+    alsace_adm1 = SearchPlace(
+        geoname_id="alsace_adm1",
+        latitude=48.3,
+        longitude=7.4,
+        zoom=6,
+        label="Alsace",
+        feature_code="ADM1",
+        country_code="FR",
+    )
+    bas_rhin = SearchPlace(
+        geoname_id="bas_rhin",
+        latitude=48.5,
+        longitude=7.5,
+        zoom=8,
+        label="Bas-Rhin",
+        feature_code="ADM2",
+        country_code="FR",
+    )
+    alsace_adm3 = SearchPlace(
+        geoname_id="alsace_adm3",
+        latitude=48.3,
+        longitude=7.4,
+        zoom=10,
+        label="Alsace",
+        feature_code="ADM3",
+        country_code="FR",
+    )
+
+    places_dict = {"Alsace": [alsace_adm1, alsace_adm3]}
+    id_to_place = {
+        "alsace_adm1": alsace_adm1,
+        "bas_rhin": bas_rhin,
+        "alsace_adm3": alsace_adm3,
+    }
+    # ADM3 → ADM2 → ADM1
+    child_to_parent = {
+        "alsace_adm3": "bas_rhin",
+        "bas_rhin": "alsace_adm1",
+    }
+    iso_to_country = {"FR": "France"}
+
+    Processor._compute_discriminating_labels(  # pyright: ignore[reportPrivateUsage]
+        places_dict, id_to_place, child_to_parent, iso_to_country
+    )
+
+    assert alsace_adm1.label == "Alsace (region)"
+    assert alsace_adm3.label == "Alsace (district)"
 
 
 def test_parse_geonames_with_tile_filter():
