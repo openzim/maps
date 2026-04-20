@@ -212,6 +212,18 @@ def prepare_context(raw_args: list[str], tmpdir: str) -> None:
         dest="zim_workers",
     )
 
+    parser.add_argument(
+        "--max-zoom",
+        type=int,
+        choices=range(0, 19),
+        metavar="{0..18}",
+        help="Maximum zoom level of tiles to include in the ZIM. "
+        "Tiles with zoom level higher than this value will be excluded. "
+        "Must be between 0 and 18 (inclusive). "
+        "Default: no limit (all zoom levels included).",
+        dest="max_zoom",
+    )
+
     args = parser.parse_args(raw_args)
 
     # Ignore unset values so they do not override the default specified in Context

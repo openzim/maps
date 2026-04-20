@@ -115,6 +115,9 @@ class Context:
     # Number of worker threads for the ZIM creator
     zim_workers: int | None = None
 
+    # Maximum zoom level of tiles to include in the ZIM (None means no limit)
+    max_zoom: int | None = None
+
     @classmethod
     def setup(cls, **kwargs: Any):
         new_instance = cls(**kwargs)
