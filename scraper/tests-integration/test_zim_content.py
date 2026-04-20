@@ -102,7 +102,7 @@ def test_zim_tags(zim_fh: Archive):
 
     for expected_tag in [
         "_sw:no",
-        "_ftindex:yes",
+        "_ftindex:no",
         "_pictures:yes",
         "_videos:no",
         "_details:yes",

@@ -31,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Ensure map borders are consistent at all zoom levels (#90)
 - Homepage should focus on the proper location and zoom (#55)
 - Fix prettier and eslint check in zimui QA CI (#85)
+- Do not create a full-text index (#91)
 
 ## [0.1.1] - 2026-03-10
 

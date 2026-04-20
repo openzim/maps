@@ -4,7 +4,7 @@ from maps2zim.errors import InvalidFormatError
 
 DEFAULT_TAGS: list[str] = [
     "_sw:no",
-    "_ftindex:yes",
+    "_ftindex:no",
     "_pictures:yes",
     "_videos:no",
     "_details:yes",

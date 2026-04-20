@@ -184,6 +184,8 @@ class Processor:
             ),
         )
 
+        creator.config_indexing(False)
+
         # Start creator early to detect problems early.
         with creator as creator:
             try:
