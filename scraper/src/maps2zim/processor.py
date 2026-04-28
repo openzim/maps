@@ -45,6 +45,14 @@ assets = Path(str(resources.files("maps2zim"))) / "assets"
 
 LOG_EVERY_SECONDS = 60
 
+ADM_LEVEL_NAMES: dict[str, str] = {
+    "ADM1": "region",
+    "ADM2": "department",
+    "ADM3": "district",
+    "ADM4": "city",
+    "ADM5": "neighborhood",
+}
+
 
 class SearchPlace(BaseModel):
     """A single place for search indexing."""
@@ -1339,14 +1347,22 @@ class Processor:
         child_to_parent: dict[str, str],
         iso_to_country: dict[str, str] | None = None,
     ) -> None:
-        """Update place.label with full hierarchy for ambiguous entries.
+        """Update place.label to disambiguate groups of places sharing the same name.
 
-        For each group of places with the same name, includes the full ancestor
-        hierarchy to disambiguate them. Updates place.label in-place.
+        Two disambiguation strategies are applied in order:
+
+        1. ADM-level tagging: if any two places in the group are in an
+           ancestor/descendant relationship (one is a parent of the other), append
+           "(region)", "(department)", "(district)", "(city)", etc. to each label in
+           the group.  Regular hierarchy disambiguation is useless in this case
+           because the places share their ancestry.
+        2. Hierarchy disambiguation: for subgroups still sharing the same label after
+           step 1, append the highest (most coarse) geographic candidate that makes each
+           place unique. Candidates per place are: ADM1, ADM2, ..., country_name. Each
+           place is resolved at the shallowest depth where its candidate is unique among
+           all still-unresolved places in that subgroup.
 
         For places with unique names: no change
-        For places with duplicate names: "place_name, ADM3, ADM2, ADM1, Country" (all
-        ancestors + country)
 
         Args:
             places_dict: Dictionary mapping name to list of SearchPlace objects
@@ -1357,48 +1373,92 @@ class Processor:
         if iso_to_country is None:
             iso_to_country = {}
 
-        for _name, places in places_dict.items():
+        for places in places_dict.values():
             if len(places) <= 1:
-                continue  # No disambiguation needed
+                continue
 
-            # For each place, build full ancestor chain up to ADM1
+            # Strategy 1: tag with ADM level when any two places are ancestor/descendant
+            place_ids = {p.geoname_id for p in places}
+            has_ancestry = False
             for place in places:
-                ancestor_labels: list[str] = []
                 current_id = place.geoname_id
-
-                # Traverse up the hierarchy until ADM1 or end of chain
-                while True:
+                visited: set[str] = set()
+                while current_id not in visited:
+                    visited.add(current_id)
                     parent_id = child_to_parent.get(current_id)
                     if parent_id is None:
                         break
-
-                    parent_place = id_to_place.get(parent_id)
-                    if parent_place is None:
+                    if parent_id in place_ids:
+                        has_ancestry = True
                         break
-
-                    ancestor_labels.append(parent_place.label)
-
-                    # Stop after collecting ADM1
-                    if parent_place.feature_code == "ADM1":
-                        break
-
                     current_id = parent_id
+                if has_ancestry:
+                    break
 
-                # Build the label: place_name, followed by all ancestors, and
-                # country name
-                label_parts = [place.label, *ancestor_labels]
+            if has_ancestry:
+                for place in places:
+                    level = ADM_LEVEL_NAMES.get(place.feature_code or "")
+                    if level:
+                        place.label = f"{place.label} ({level})"
 
-                # Add country name if we have the country code and it's not already
-                # in ancestors
-                if place.country_code and place.country_code in iso_to_country:
-                    country_name = iso_to_country[place.country_code]
-                    # Only add if not already present and if there are ancestors
-                    # (to distinguish)
-                    if country_name not in ancestor_labels and ancestor_labels:
-                        label_parts.append(country_name)
+            # Strategy 2: hierarchy disambiguation for subgroups still sharing a label
+            label_to_subgroup: dict[str, list[SearchPlace]] = {}
+            for place in places:
+                label_to_subgroup.setdefault(place.label, []).append(place)
 
-                if len(label_parts) > 1:
-                    place.label = ", ".join(label_parts)
+            for subgroup in label_to_subgroup.values():
+                if len(subgroup) <= 1:
+                    continue
+
+                # Build candidate suffix list per place: [ADM1, ADM2, ..., country_name]
+                place_candidates: list[list[str]] = []
+                for place in subgroup:
+                    ancestors: list[str] = []
+                    current_id = place.geoname_id
+                    while True:
+                        parent_id = child_to_parent.get(current_id)
+                        if parent_id is None:
+                            break
+                        parent_place = id_to_place.get(parent_id)
+                        if parent_place is None:
+                            break
+                        ancestors.append(parent_place.label)
+                        if parent_place.feature_code == "ADM1":
+                            break
+                        current_id = parent_id
+                    ancestors.reverse()  # ADM1 first
+                    if place.country_code and place.country_code in iso_to_country:
+                        ancestors.insert(0, iso_to_country[place.country_code])
+                    place_candidates.append(ancestors)
+
+                # Iteratively resolve: at each depth, assign the candidate to any place
+                # whose label at that depth is unique among still-unresolved places.
+                assigned: list[str | None] = [None] * len(subgroup)
+                remaining = list(range(len(subgroup)))
+                max_depth = max((len(c) for c in place_candidates), default=0)
+
+                for depth in range(max_depth):
+                    label_count: dict[str, int] = {}
+                    for i in remaining:
+                        if depth < len(place_candidates[i]):
+                            lbl = place_candidates[i][depth]
+                            label_count[lbl] = label_count.get(lbl, 0) + 1
+
+                    newly_resolved = [
+                        i
+                        for i in remaining
+                        if depth < len(place_candidates[i])
+                        and label_count.get(place_candidates[i][depth], 0) == 1
+                    ]
+                    for i in newly_resolved:
+                        assigned[i] = place_candidates[i][depth]
+                    remaining = [i for i in remaining if i not in newly_resolved]
+                    if not remaining:
+                        break
+
+                for i, place in enumerate(subgroup):
+                    if assigned[i] is not None:
+                        place.label = f"{place.label}, {assigned[i]}"
 
     def _write_places(
         self, creator: Creator, places_dict: dict[str, list[SearchPlace]]
