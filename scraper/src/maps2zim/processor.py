@@ -1498,7 +1498,24 @@ class Processor:
                 self._report_progress()
                 last_log_time = current_time
 
+            duplicate_place_labels: set[str] = set()
             for place in places:
+                duplicate_places = [
+                    other_place
+                    for other_place in places
+                    if place.label == other_place.label
+                ]
+                if len(duplicate_places) > 1:
+                    if place.label not in duplicate_place_labels:
+                        duplicate_ids = ", ".join(
+                            [place.geoname_id for place in duplicate_places]
+                        )
+                        logger.warning(
+                            f"Not adding duplicate place {place.label} in title search:"
+                            f"{duplicate_ids}"
+                        )
+                        duplicate_place_labels.add(place.label)
+                    continue
                 # Create one HTML redirect per place
                 path = f"search/{place.label}"
                 root_prefix = "../" * path.count("/")
