@@ -35,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Do not create a full-text index (#91)
 - Add all possibilites in suggestion index when disambiguation page is used (#92)
 - Fix logic computing label for places discrimination (#93)
+- Do not add duplicate search entries (#107)
 
 ## [0.1.1] - 2026-03-10
 
