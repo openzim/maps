@@ -27,24 +27,24 @@
       "required": true,
       "title": "ZIM title",
       "description": "Title of the ZIM",
-      "minLength": 1,
-      "maxLength": 30
+      "minGraphemes": 1,
+      "maxGraphemes": 30
     },
     "description": {
       "type": "string",
       "required": true,
       "title": "ZIM description",
       "description": "Description of the ZIM",
-      "minLength": 1,
-      "maxLength": 80
+      "minGraphemes": 1,
+      "maxGraphemes": 80
     },
     "long-description": {
       "type": "string",
       "required": false,
       "title": "ZIM long description",
       "description": "Long description of the ZIM",
-      "minLength": 1,
-      "maxLength": 4000
+      "minGraphemes": 1,
+      "maxGraphemes": 4000
     },
     "creator": {
       "type": "string",
