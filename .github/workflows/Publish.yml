@@ -16,7 +16,9 @@ jobs:
       - name: Set up Node js
         uses: actions/setup-node@v6
         with:
-          node-version-file: zimui/.node-version
+          node-version-file: zimui/package.json
+          cache: yarn
+          cache-dependency-path: zimui/yarn.lock
 
       - name: Build zimui
         working-directory: zimui
