@@ -105,6 +105,12 @@ def parse_poly_file(poly_path: Path) -> Polygon:
             i += 1
 
         if coords:
+            # Sub-polygons that touch lon = -180 are the western half of a region
+            # split at the antimeridian by the poly file author.  Rotating them
+            # +360° keeps all coordinates positive so Shapely's .bounds spans a
+            # compact, meaningful range instead of the entire [-180, 180] world.
+            if any(lon <= -180 for lon, _ in coords):  # noqa: PLR2004
+                coords = [(lon + 360.0, lat) for lon, lat in coords]
             polygons.append(Polygon(coords))
         else:
             raise ValueError(f"No coordinates found in polygon starting at line {i}")
@@ -192,6 +198,12 @@ class TileFilter:
             self.polygon_count = len(polygons)
 
             min_lon, min_lat, max_lon, max_lat = unified.bounds
+            # If parse_poly_file rotated a western polygon by +360°, max_lon will
+            # exceed 180.  Subtract 360 to get back to standard [-180, 180] coords;
+            # the resulting min_lon > max_lon signals antimeridian crossing to
+            # tile_intersects() and contains_point().
+            if max_lon > 180:  # noqa: PLR2004
+                max_lon -= 360.0
             self.bounding_box = (min_lon, min_lat, max_lon, max_lat)
 
             logger.info(
@@ -216,10 +228,12 @@ class TileFilter:
         west, south, east, north = tile_to_bbox(z, x, y)
         min_lon, min_lat, max_lon, max_lat = self.bounding_box
 
-        # Check if tile bbox overlaps with region bounding box
-        return not (
-            east < min_lon or west > max_lon or north < min_lat or south > max_lat
-        )
+        if north < min_lat or south > max_lat:
+            return False
+
+        if min_lon > max_lon:  # antimeridian crossing
+            return east >= min_lon or west <= max_lon
+        return not (east < min_lon or west > max_lon)
 
     def contains_point(self, lon: float, lat: float) -> bool:
         """Check if a geographic point is within the bounding box of loaded regions.
@@ -234,4 +248,8 @@ class TileFilter:
         if self.bounding_box is None:
             return True
         min_lon, min_lat, max_lon, max_lat = self.bounding_box
-        return min_lon <= lon <= max_lon and min_lat <= lat <= max_lat
+        if not (min_lat <= lat <= max_lat):
+            return False
+        if min_lon > max_lon:  # antimeridian crossing
+            return lon >= min_lon or lon <= max_lon
+        return min_lon <= lon <= max_lon
