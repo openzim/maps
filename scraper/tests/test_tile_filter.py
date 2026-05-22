@@ -203,3 +203,142 @@ END
         assert tile_filter_no_bounds.contains_point(0.5, 0.5) is True
         assert tile_filter_no_bounds.contains_point(-180.0, -90.0) is True
         assert tile_filter_no_bounds.contains_point(180.0, 90.0) is True
+
+
+# --- Antimeridian tests ---
+# Region: lon [178, 180] + [-180, -177], lat [-20, -17] (~ Fiji)
+# min_lon (178) > max_lon (-177) signals antimeridian crossing.
+_ANTI_BBOX = (178.0, -20.0, -177.0, -17.0)
+
+
+def test_parse_poly_file_antimeridian_rotation():
+    """Sub-polygons touching lon=-180 are rotated +360° so bounds stay compact."""
+    poly_content = """fiji_area
+fiji_east
+    178.0  -17.0
+    180.0  -17.0
+    180.0  -20.0
+    178.0  -20.0
+    178.0  -17.0
+END
+fiji_west
+    -180.0  -17.0
+    -177.0  -17.0
+    -177.0  -20.0
+    -180.0  -20.0
+    -180.0  -17.0
+END
+END
+"""
+    with TemporaryDirectory() as tmpdir:
+        poly_path = Path(tmpdir) / "fiji.poly"
+        poly_path.write_text(poly_content)
+        geometry = parse_poly_file(poly_path)
+
+        min_lon, min_lat, max_lon, max_lat = geometry.bounds
+        # Western polygon rotated: -177 + 360 = 183; -180 + 360 = 180
+        assert min_lon == 178.0
+        assert max_lon == 183.0
+        assert min_lat == -20.0
+        assert max_lat == -17.0
+
+
+def test_parse_poly_file_australia_oceania():
+    """australia-oceania pattern: western polygon rotated, compact bounds result."""
+    poly_content = """australia-oceania
+1
+   -107.863281   11.780702
+   -104.171875   -28.082042
+   -180.000000   -45.652740
+   -180.000000   4.082818
+   -107.863281   11.780702
+END
+0
+   89.512500   -11.143360
+   70.189171   -10.433483
+   62.057814   -56.558737
+   180.000000   -57.164820
+   180.000000   26.277810
+   141.547997   22.628320
+   130.145100   3.640314
+   129.953200   -0.535293
+   131.061600   -3.784815
+   130.266900   -10.043780
+   118.255700   -13.011650
+   102.800900   -8.390453
+   89.512500   -11.143360
+END
+END
+"""
+    with TemporaryDirectory() as tmpdir:
+        poly_path = Path(tmpdir) / "au.poly"
+        poly_path.write_text(poly_content)
+        geometry = parse_poly_file(poly_path)
+
+        min_lon, min_lat, max_lon, max_lat = geometry.bounds
+        assert min_lon == 62.057814
+        # Western polygon rotated: -104.171875 + 360 = 255.828125
+        assert max_lon == 255.828125
+        assert max_lon > 180, "rotated western polygon pushes max_lon above 180"
+
+        # Simulate what TileFilter.__init__ does: normalize back to [-180, 180]
+        if max_lon > 180:
+            max_lon -= 360.0
+        assert min_lon > max_lon, "min_lon > max_lon signals antimeridian crossing"
+
+        # Verify filtering with the normalised bbox
+        tf = TileFilter("")
+        tf.bounding_box = (min_lon, min_lat, max_lon, max_lat)
+        tf.polygon_count = 2
+        assert tf.contains_point(150.0, -30.0) is True  # Oceania
+        assert tf.contains_point(-130.0, -20.0) is True  # Pacific west side
+        assert tf.contains_point(30.0, -20.0) is False  # prime-meridian gap
+
+
+def test_tile_filter_antimeridian_tile_intersects():
+    """tile_intersects handles bounding boxes that cross the antimeridian."""
+    tf = TileFilter("")
+    tf.bounding_box = _ANTI_BBOX
+    tf.polygon_count = 1
+
+    # Tile near lon=179 (east of antimeridian, correct latitude)
+    # zoom=8, x=255 → lon [178.59, 180]; y=141 → lat near -18
+    assert tf.tile_intersects(8, 255, 141) is True
+
+    # Tile near lon=-178 (west of antimeridian, correct latitude)
+    # zoom=8, x=1 → lon [-178.59, -177.19]
+    assert tf.tile_intersects(8, 1, 141) is True
+
+    # Tile at prime meridian (lon ~0), correct latitude — outside region
+    # zoom=8, x=128 → lon [0, 1.4]
+    assert tf.tile_intersects(8, 128, 141) is False
+
+    # Tile at correct longitude but wrong latitude (north pole area)
+    assert tf.tile_intersects(8, 255, 0) is False
+
+    # Whole-world tile (zoom 0) must always intersect
+    assert tf.tile_intersects(0, 0, 0) is True
+
+
+def test_tile_filter_antimeridian_contains_point():
+    """contains_point handles bounding boxes that cross the antimeridian."""
+    tf = TileFilter("")
+    tf.bounding_box = _ANTI_BBOX
+    tf.polygon_count = 1
+
+    # Points inside the east side of the antimeridian
+    assert tf.contains_point(179.0, -18.0) is True
+    assert tf.contains_point(178.0, -17.0) is True
+
+    # Points inside the west side of the antimeridian
+    assert tf.contains_point(-178.0, -18.0) is True
+    assert tf.contains_point(-177.0, -19.0) is True
+
+    # Points outside (prime meridian area, correct latitude)
+    assert tf.contains_point(0.0, -18.0) is False
+    assert tf.contains_point(90.0, -18.0) is False
+    assert tf.contains_point(-90.0, -18.0) is False
+
+    # Points with correct longitude but wrong latitude
+    assert tf.contains_point(179.0, 0.0) is False
+    assert tf.contains_point(-178.0, 80.0) is False
