@@ -61,13 +61,15 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version-file: zimui/package.json
-          cache: yarn
-          cache-dependency-path: zimui/yarn.lock
 
-      - name: Install dependencies
+      - name: Enable Corepack
+        working-directory: zimui
+        run: corepack enable
+
+      - name: Install JS dependencies
         working-directory: zimui
         run: |
-          yarn install
+          yarn install --immutable
 
       - name: Build
         working-directory: zimui

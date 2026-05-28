@@ -1,8 +1,9 @@
-FROM node:24-alpine AS zimui
+FROM node:26-alpine AS zimui
 
 WORKDIR /src
-COPY . /src
-RUN cd zimui && yarn install --frozen-lockfile
+COPY zimui /src/zimui
+RUN cd zimui && npm install -g npm corepack && corepack enable
+RUN cd zimui && yarn install --immutable
 RUN cd zimui && yarn build
 
 FROM python:3.14-bookworm

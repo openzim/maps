@@ -23,19 +23,19 @@ jobs:
         working-directory: scraper
         run: |
           pip install -U pip
-          pip install -e .[lint,check,scripts,test]
+          pip install -e .[qa,scripts,test]
 
-      - name: Check black formatting
+      - name: Check Linting
         working-directory: scraper
-        run: inv lint-black
+        run: inv check-lint
 
-      - name: Check ruff
+      - name: Check Formatting
         working-directory: scraper
-        run: inv lint-ruff
+        run: inv check-format
 
-      - name: Check pyright
+      - name: Check Type
         working-directory: scraper
-        run: inv check-pyright
+        run: inv check-type
 
   check-zimui-qa:
     runs-on: ubuntu-24.04
@@ -47,18 +47,20 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version-file: zimui/package.json
-          cache: yarn
-          cache-dependency-path: zimui/yarn.lock
+
+      - name: Enable Corepack
+        working-directory: zimui
+        run: corepack enable
 
       - name: Install JS dependencies
         working-directory: zimui
-        run: yarn install --frozen-lockfile
+        run: yarn install --immutable
 
       - name: Check prettier
         working-directory: zimui
         run: |
           yarn format-check
-          
+
       - name: Check eslint
         working-directory: zimui
         run: |

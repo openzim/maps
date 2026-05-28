@@ -10,7 +10,6 @@ logger = Context.logger
 def main():
     try:
         with tempfile.TemporaryDirectory() as tmpdir:
-
             prepare_context(sys.argv[1:], tmpdir)
 
             # import this only once the Context has been initialized, so that it gets an

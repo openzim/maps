@@ -151,7 +151,6 @@ const parseUrlFragment = () => {
   let defaultCenter = undefined;
   let defaultZoom = undefined;
   let mapConfig = { center: undefined, zoom: undefined, bounds: undefined };
-  let zimName = null;
   let storageKey = null;
   let maxZoom = 18;
 
@@ -164,8 +163,7 @@ const parseUrlFragment = () => {
 
     // Get zim_name for localStorage key
     if (config.zimName) {
-      zimName = config.zimName;
-      storageKey = `openzim$${zimName}$default_view`;
+      storageKey = `openzim$${config.zimName}$default_view`;
     }
 
     // Store default center and zoom from config

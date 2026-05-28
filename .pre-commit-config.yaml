@@ -7,16 +7,13 @@ repos:
     hooks:
       - id: trailing-whitespace
       - id: end-of-file-fixer
-  - repo: https://github.com/psf/black
-    rev: '26.1.0'
-    hooks:
-      - id: black
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.0
+    rev: v0.15.15
     hooks:
-      - id: ruff
+      - id: ruff-check
+      - id: ruff-format
   - repo: https://github.com/RobertCraigie/pyright-python
-    rev: v1.1.408
+    rev: v1.1.409
     hooks:
       - id: pyright
         name: pyright (system)
@@ -30,12 +27,12 @@ repos:
     hooks:
       - id: prettier
         name: prettier (system)
-        entry: prettier --write --ignore-unknown
+        entry: npx prettier --write --ignore-unknown
         language: node
         files: zimui\/.*$ # files in frontend folder
         minimum_pre_commit_version: "2.9.2"
   - repo: https://github.com/pre-commit/mirrors-eslint
-    rev: v9.39.1
+    rev: v10.4.0
     hooks:
     - id: eslint
       types: [file]

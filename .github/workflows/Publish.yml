@@ -17,13 +17,15 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version-file: zimui/package.json
-          cache: yarn
-          cache-dependency-path: zimui/yarn.lock
+
+      - name: Enable Corepack
+        working-directory: zimui
+        run: corepack enable
 
       - name: Build zimui
         working-directory: zimui
         run: |
-          yarn install --frozen-lockfile
+          yarn install --immutable
           yarn build
 
       - name: Set up Python

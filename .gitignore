@@ -322,3 +322,6 @@ scraper/src/maps2zim/assets/mapbox-gl-rtl-text.js
 
 # Zimui build dist
 scraper/src/maps2zim/zimui/
+
+# Yarn Berry local state
+zimui/.yarn
