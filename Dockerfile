@@ -1,4 +1,4 @@
-FROM node:24-alpine AS zimui
+FROM node:26-alpine AS zimui
 
 WORKDIR /src
 COPY . /src

@@ -30,12 +30,12 @@ repos:
     hooks:
       - id: prettier
         name: prettier (system)
-        entry: prettier --write --ignore-unknown
+        entry: npx prettier --write --ignore-unknown
         language: node
         files: zimui\/.*$ # files in frontend folder
         minimum_pre_commit_version: "2.9.2"
   - repo: https://github.com/pre-commit/mirrors-eslint
-    rev: v9.39.1
+    rev: v10.4.0
     hooks:
     - id: eslint
       types: [file]
