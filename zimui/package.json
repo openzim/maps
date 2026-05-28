@@ -24,5 +24,6 @@
   },
   "dependencies": {
     "maplibre-gl": "5.24.0"
-  }
+  },
+  "packageManager": "yarn@4.15.0"
 }
