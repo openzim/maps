@@ -99,15 +99,12 @@ The following commands can then be used to build and test the scraper:
 # Show scripts
 ❯ hatch env show
 
-# linting, testing, coverage, checking
-❯ hatch run lint:all
-❯ hatch run lint:fixall
+# linting, formating, type checking
+❯ hatch run qa:check-all
+❯ hatch run qa:fix-all
 
 # run tests
 ❯ hatch run test:run
-
-# run static type checks
-❯ hatch env run check:all
 
 # building packages
 ❯ hatch build
@@ -117,6 +114,6 @@ The following commands can then be used to build and test the scraper:
 
 This project adheres to openZIM's [Contribution Guidelines](https://github.com/openzim/overview/wiki/Contributing).
 
-This project has implemented openZIM's [Python bootstrap, conventions and policies](https://github.com/openzim/_python-bootstrap/blob/main/docs/Policy.md) **v1.0.3**.
+This project has implemented openZIM's [Python bootstrap, conventions and policies](https://github.com/openzim/_python-bootstrap/blob/main/docs/Policy.md) **v2.0.0**.
 
 See details for contributions in [CONTRIBUTING.md](CONTRIBUTING.md).

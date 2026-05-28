@@ -24,16 +24,17 @@ additional-keywords = ["openstreetmap"]
 
 [project.optional-dependencies]
 scripts = ["invoke==3.0.3"]
-lint = ["black==26.5.1", "ruff==0.15.15"]
-check = ["pyright==1.1.409"]
+qa = [
+  "ruff==0.15.15",
+  "pyright==1.1.409"
+]
 test = ["pytest==9.0.3", "coverage==7.14.1"]
 dev = [
   "pre-commit==4.6.0",
   "debugpy==1.8.20",
   "maps2zim[scripts]",
-  "maps2zim[lint]",
+  "maps2zim[qa]",
   "maps2zim[test]",
-  "maps2zim[check]",
   "humanfriendly==10.0"
 ]
 
@@ -65,26 +66,19 @@ report-cov = "inv report-cov"
 coverage = "inv coverage --args '{args}'"
 html = "inv coverage --html --args '{args}'"
 
-[tool.hatch.envs.lint]
-template = "lint"
-python = "py314"
+[tool.hatch.envs.qa]
+template = "qa"
 skip-install = false
-features = ["scripts", "lint"]
+features = ["scripts", "qa", "test"]
 
-[tool.hatch.envs.lint.scripts]
-black = "inv lint-black --args '{args}'"
-ruff = "inv lint-ruff --args '{args}'"
-all = "inv lintall --args '{args}'"
-fix-black = "inv fix-black --args '{args}'"
-fix-ruff = "inv fix-ruff --args '{args}'"
-fixall = "inv fixall --args '{args}'"
-
-[tool.hatch.envs.check]
-features = ["scripts", "check"]
-
-[tool.hatch.envs.check.scripts]
-pyright = "inv check-pyright --args '{args}'"
-all = "inv checkall --args '{args}'"
+[tool.hatch.envs.qa.scripts]
+check-lint = "inv check-lint --args '{args}'"
+check-format = "inv check-format --args '{args}'"
+check-type = "inv check-type --args '{args}'"
+check-all = "inv check-all --args '{args}'"
+fix-format = "inv fix-format --args '{args}'"
+fix-lint = "inv fix-lint --args '{args}'"
+fix-all = "inv fix-all --args '{args}'"
 
 [tool.black]
 line-length = 88
