@@ -521,10 +521,8 @@ def test_parse_geonames_with_tile_filter():
 
             # Create processor and parse geonames with filter
             processor = Processor()
-            places_dict = (
-                processor._parse_geonames(  # pyright: ignore[reportPrivateUsage]
-                    tile_filter=tile_filter
-                )
+            places_dict = processor._parse_geonames(  # pyright: ignore[reportPrivateUsage]
+                tile_filter=tile_filter
             )
 
             # Verify that only Lyon is in the result
@@ -569,10 +567,8 @@ def test_parse_geonames_without_tile_filter():
         try:
             # Parse geonames WITHOUT filter
             processor = Processor()
-            places_dict = (
-                processor._parse_geonames(  # pyright: ignore[reportPrivateUsage]
-                    tile_filter=None
-                )
+            places_dict = processor._parse_geonames(  # pyright: ignore[reportPrivateUsage]
+                tile_filter=None
             )
 
             # Both places should be included

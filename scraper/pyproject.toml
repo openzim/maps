@@ -9,8 +9,8 @@ description = "Make ZIM file with offline maps from Openstreetmap"
 readme = "../README.md"
 dependencies = [
   "libzim>=3.9.0", # just to ensure we do not have compression issues anymore
-  "zimscraperlib==5.3.0",
-  "pydantic==2.12.5",
+  "zimscraperlib==5.4.0",
+  "pydantic==2.13.4",
   "schedule==1.2.2",
   "shapely==2.1.2",
 ]
@@ -23,12 +23,12 @@ additional-keywords = ["openstreetmap"]
 [tool.hatch.build.hooks.openzim-build]
 
 [project.optional-dependencies]
-scripts = ["invoke==2.2.1"]
-lint = ["black==26.1.0", "ruff==0.15.0"]
-check = ["pyright==1.1.408"]
-test = ["pytest==9.0.2", "coverage==7.13.4"]
+scripts = ["invoke==3.0.3"]
+lint = ["black==26.5.1", "ruff==0.15.15"]
+check = ["pyright==1.1.409"]
+test = ["pytest==9.0.3", "coverage==7.14.1"]
 dev = [
-  "pre-commit==4.5.1",
+  "pre-commit==4.6.0",
   "debugpy==1.8.20",
   "maps2zim[scripts]",
   "maps2zim[lint]",

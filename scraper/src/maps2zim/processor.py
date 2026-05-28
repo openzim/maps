@@ -790,7 +790,6 @@ class Processor:
 
         # Extract and add styles to ZIM
         for style in assets.glob("kiwix-*.json"):
-
             # Parse JSON
             style_obj = json.loads(style.read_bytes())
 
