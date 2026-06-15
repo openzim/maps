@@ -3,13 +3,13 @@
   "stdOutput": true,
   "stdStats": true,
   "flags": {
-    "include-poly": {
+    "include_poly": {
       "type": "string",
       "required": false,
       "title": "Include Poly",
       "description": "Comma-separated URL(s) of .poly file(s) defining regions to include"
     },
-    "default-view": {
+    "default_view": {
       "type": "string",
       "required": false,
       "title": "Default View",
@@ -38,7 +38,7 @@
       "minGraphemes": 1,
       "maxGraphemes": 80
     },
-    "long-description": {
+    "long_description": {
       "type": "string",
       "required": false,
       "title": "ZIM long description",
@@ -59,7 +59,7 @@
       "isPublisher": true,
       "description": "Publisher name"
     },
-    "file-name": {
+    "file_name": {
       "type": "string",
       "required": false,
       "title": "ZIM filename",
@@ -71,14 +71,14 @@
       "title": "ZIM tags",
       "description": "Semicolon (;) delimited list of tags to add to the ZIM"
     },
-    "secondary-color": {
+    "secondary_color": {
       "type": "string",
       "required": false,
       "title": "Secondary Color",
       "description": "Secondary (background) color of ZIM UI. Hex/HTML syntax (#424242)",
       "pattern": "^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$"
     },
-    "illustration-url": {
+    "illustration_url": {
       "type": "string",
       "required": false,
       "title": "Illustration URL",
@@ -90,7 +90,7 @@
       "title": "Debug",
       "description": "Enable verbose output"
     },
-    "zim-workers": {
+    "zim_workers": {
       "type": "integer",
       "required": false,
       "title": "ZIM workers",
@@ -111,14 +111,14 @@
       "description": "Output folder for ZIMs. Default: /output",
       "pattern": "^/output$"
     },
-    "stats-filename": {
+    "stats_filename": {
       "type": "string",
       "required": false,
       "title": "Stats Filename",
       "description": "Scraping progress file. Leave it as `/output/task_progress.json`",
       "pattern": "^/output/task_progress\\.json$"
     },
-    "max-zoom": {
+    "max_zoom": {
       "type": "integer",
       "required": false,
       "title": "Max Zoom",
