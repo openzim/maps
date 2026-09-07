@@ -323,5 +323,8 @@ scraper/src/maps2zim/assets/mapbox-gl-rtl-text.js
 # Zimui build dist
 scraper/src/maps2zim/zimui/
 
+# Main README.md copied by hatch when building project locally
+scraper/README.md
+
 # Yarn Berry local state
 zimui/.yarn
