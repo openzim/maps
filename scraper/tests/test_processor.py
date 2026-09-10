@@ -634,6 +634,21 @@ def test_create_about_html_contains_title_and_description():
     assert "<!DOCTYPE html>" in html
 
 
+def test_create_about_html_includes_close_link():
+    """Test that about.html includes a visible way back to the map."""
+    html = Processor._create_about_html(  # pyright: ignore[reportPrivateUsage]
+        title="My Map",
+        description="Short desc",
+        long_description=None,
+        zim_creator="openZIM",
+        publisher="openZIM",
+        include_geofabrik=False,
+    )
+    assert 'class="close-button"' in html
+    assert 'href="../index.html"' in html
+    assert 'aria-label="Close about page"' in html
+
+
 def test_create_about_html_single_creator_publisher():
     """Test creator/publisher when they are the same."""
     html = Processor._create_about_html(  # pyright: ignore[reportPrivateUsage]
