@@ -1764,6 +1764,8 @@ class Processor:
 </head>
 <body>
     <div class="container" style="max-width:700px">
+        <a class="close-button" href="../index.html"
+           aria-label="Close about page">&times;</a>
         <div class="header">
             <div class="icon">🗺️</div>
             <h1>{title_escaped}</h1>
